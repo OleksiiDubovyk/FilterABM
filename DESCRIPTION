@@ -1,0 +1,19 @@
+Package: FilterABM
+Type: Package
+Title: Agent-based modeling of trait-based environmental filtering
+Version: 0.1.0
+Authors@R: c(
+    person(
+      "Oleksii", "Dubovyk",
+      email = "oadubovyk@gmail.com",
+      role = c("aut", "cre")
+    )
+  )
+Description: An agent-based model that includes a simplified case of environmental filtering with one abstract trait, 
+    one abstract environmental factor, and one abstract resource.
+    The model attempts to predict the abundance and trait distribution in a local community shaped by the processes of community assembly, niche clustering, and dispersion.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    dplyr
