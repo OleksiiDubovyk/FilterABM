@@ -19,8 +19,7 @@ The metacommunuty object is represented as a table with the following columns:
 - `species`: integer, species ID
 - `trait`: double, species-specific mean trait value
 - `abundance`: integer, species' abundance within the metacommunity
-- `trait_sd`: double, non-negative intraspecific trait variation
-- (e.g., an individual drawn from this metacommunity will have the trait value defined as such as drawn from $N(\sigma)$).
+- `trait_sd`: double, non-negative intraspecific trait variation (e.g., an individual drawn from this metacommunity will have the trait value defined as such as drawn from $`\mathcal{N}(\mu = \code{trait}, \sigma^2 = \code{trait_sd})`$).
 
 #### Local habitat
 
