@@ -14,12 +14,20 @@ The "objects" on which the package operates are based upon `dplyr`'s tibble data
 
 #### Metacommunity
 
-The metacommunuty object is represented as a table with the following columns:
+Class defined as `"FilterABM_mc"`. The metacommunuty object is represented as a table with the following columns:
 
 - `species`: integer, species ID
 - `trait`: double, species-specific mean trait value
 - `abundance`: integer, species' abundance within the metacommunity
-- `trait_sd`: double, non-negative intraspecific trait variation (e.g., an individual drawn from this metacommunity will have the trait value defined as such as drawn from $`\mathcal{N}(\mu = \code{trait}, \sigma^2 = \code{trait_sd})`$).
+- `trait_sd`: double, non-negative intraspecific trait variation (e.g., an individual drawn from this metacommunity will have the trait value defined as such as drawn from $`\mathcal{N}(\mu = \text{trait}, \sigma^2 = \text{trait_sd})`$).
+
+**Initialize** a new metacommunity object with [`init_meta()`](R/init_meta.R)
+
+***Constructor*** [`new_FilterABM_mc()`](R/new_FilterABM_mc.R)
+
+***Validator*** [`validate_FilterABM_mc()`](R/validate_FilterABM_mc.R)
+
+***Helper*** [`FilterABM_mc()`](R/FilterABM_mc.R)
 
 #### Local habitat
 
