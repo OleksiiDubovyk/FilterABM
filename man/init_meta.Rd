@@ -4,30 +4,42 @@
 \alias{init_meta}
 \title{Initialize a metacommunity}
 \usage{
-init_meta(M = 120, env_mean = 0, env_sd = 25, cauchy = 1.25, trait_sds = 0)
+init_meta(
+  M = 120,
+  env_mean = 0,
+  env_sd = 1,
+  cauchy = 1,
+  trait_sds = 0,
+  max = 1e+06
+)
 }
 \arguments{
-\item{M}{Species richness within metacommunity, positive integer}
+\item{M}{Integer, species richness within metacommunity, positive integer}
 
-\item{env_mean}{Mean environmental factor value within the extent of a metacommunity}
+\item{env_mean}{Numeric, mean environmental factor value within the extent of a metacommunity}
 
-\item{env_sd}{Variation of environmental factor value within the extent of a metacommunity}
+\item{env_sd}{Non-negative numeric, variation of environmental factor value within the extent of a metacommunity}
 
-\item{cauchy}{Delta parameter in Cauchy function used to connect species' trait values and abundances}
+\item{cauchy}{Non-negative numeric, delta parameter in Cauchy function used to connect species' trait values and log-abundances}
 
-\item{trait_sds}{Intraspecific trait variation; either a single value if same for all species, or a M-length vector}
+\item{trait_sds}{Non-negative numeric, intraspecific trait variation; either a single value if same for all species, or a M-length vector}
+
+\item{max}{Numeric, the maximum abundance allowed for the most abundant species in the metacommunity.}
 }
 \value{
-A tibble (dataframe) with the following columns:
-\code{species} - species ID, in ascending order relative to the trait value,
-\code{trait} - species mean trait value,
-\code{abundance} - expected species abundance.
+A metacommunity \code{"FilterABM_mc"}-class tibble with the following columns:
+\code{species} - integer, species ID, in ascending order relative to the trait value,
+\code{trait} - double, species mean trait value,
+\code{abundance} - integer, expected species abundance,
+\code{trait_sd} - non-negative double, intraspecific trait variation.
 }
 \description{
-Create a metacommunity "object", a tibble with rows describing different abstract hypothetical species in the species pool,
+Create a metacommunity (\code{"FilterABM_mc"}) object, a tibble with rows describing different abstract hypothetical species in the species pool,
 and columns representing species identifier, mean trait value across individuals within the species, and abundance of the species.
 Intraspecific trait variation is set manually and passed to the output as a function parameter.
 }
 \examples{
-init_meta()
+x = init_meta()
+class(x)
+
 }

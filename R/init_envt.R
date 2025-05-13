@@ -1,3 +1,36 @@
+#' Helper, generate a random variable with set correlation coefficient to a focal variable
+#'
+#' @description
+#' For a given vector \code{x}, generate an independent random vector of the same length such that correlation between \code{x} and output vector equals to a set coefficient \code{correlation}.
+#'
+#'
+#' @param x Numeric, input vector.
+#' @param ymean Numeric, mean of the output vector.
+#' @param ysd Positive numeric, SD of the output vector.
+#' @param correlation Correlation coefficient.
+#'
+#' @returns Numeric of the same length as \code{x}.
+#'
+#' @importFrom stats rnorm
+#' @importFrom stats lm
+#' @importFrom stats resid
+#'
+#' @export
+#'
+#' @examples
+#' x = rnorm(100)
+#' simcor(x)
+#'
+simcor <- function (x, ymean = 0, ysd = 1, correlation = 0) {
+  n <- length(x)
+  y <- rnorm(n)
+  z <- correlation * scale(x)[,1] + sqrt(1 - correlation^2) *
+    scale(resid(lm(y ~ x)))[,1]
+  yresult <- ymean + ysd * z
+  yresult
+}
+
+
 #' Initialize the local environment
 #'
 #' @description
@@ -30,35 +63,17 @@
 #' init_envt()
 #'
 init_envt <- function(npatch = 10, gradient = "random", K = 3, env_mean = 0, env_sd = 25, rho = 0.75){
-  #
-  # `npatch` - number of patches in the environment
-  # `gradient` - the rule by which patches get their values of env, either:
-  #   `gradient = "random"` - env is an independent random variable drawn from N(env_mean, env_sd)
-  #   `gradient = "linear"` - env changes linearly from patch number 1 to patch number npatch with min and max drawn from 95% bound of N(env_mean, env_sd)
-  #   `gradient = "correlated"` - environmental factor is correlated with patch number with correlation coefficient equal `rho`
-  #   `gradient = "clustered"` - for K clusters, there are linearly distributed local env_means and small env_sd
-  # `K` - number of clusters if `gradient = "clustered"`
-  # `env_mean` - regional mean of the environmental factor
-  # `env_sd` - regional variation of the environmental factor
-  # `rho` - correlation coefficient between patch number and environmental factor
-  #
-  # Output:
-  # tibble (dataframe) with the following columns:
-  #   `$patch` - patch number
-  #   `$env` - environmental factor
-  #
-  # Note: the model is one-dimensional, $patch represents relative patch position
-  #
+
   envd = rnorm(npatch, mean = env_mean, sd = env_sd)
   env_min <- quantile(envd, 0.025) %>% unname()
   env_max <- quantile(envd, 0.975) %>% unname()
   if (gradient == "random"){
-    tibble(
+    lh <- tibble(
       patch = 1:npatch,
       env = envd
     )
   }else if (gradient == "linear"){
-    tibble(
+    lh <- tibble(
       patch = 1:npatch,
       env = seq(from = env_min, to = env_max, length.out = npatch)
     )
@@ -69,15 +84,16 @@ init_envt <- function(npatch = 10, gradient = "random", K = 3, env_mean = 0, env
       sapply(env_means_clust, function(x) rnorm(ceiling(npatch/K), mean = x, sd = env_sd_clust)) %>% unlist()
     )
     envc <- envc[1:npatch]
-    tibble(
+    lh <- tibble(
       patch = 1:npatch,
       env = envc
     )
   }else if(gradient == "correlated"){
     envc <- simcor(x = 1:npatch, ymean = env_mean, ysd = env_sd, correlation = rho)
-    tibble(
+    lh <- tibble(
       patch = 1:npatch,
       env = envc
     )
   }
+  FilterABM_lh(x = lh, gradient = gradient)
 }

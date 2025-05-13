@@ -1,7 +1,7 @@
 Package: FilterABM
 Type: Package
 Title: Agent-based modeling of trait-based environmental filtering
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: c(
     person(
       "Oleksii", "Dubovyk",
@@ -21,3 +21,6 @@ Imports:
 RoxygenNote: 7.3.2
 URL: https://github.com/OleksiiDubovyk/FilterABM
 BugReports: https://github.com/OleksiiDubovyk/FilterABM/issues
+Suggests: 
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
