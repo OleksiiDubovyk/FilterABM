@@ -11,9 +11,9 @@
 #' \code{abundance} - integer, expected species abundance,
 #' \code{trait_sd} - non-negative double, intraspecific trait variation.
 #'
-#' @param x A valid object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame"
+#' @param x A valid metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame"
 #'
-#' @returns An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
+#' @returns A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
 #'
 #' @import dplyr
 #' @importFrom stats rnorm
@@ -112,7 +112,7 @@ validate_FilterABM_mc <- function(x){
 #' @param val_in Logical, default to TRUE. Is formal validation of \strong{input} necessary to check if consistent with the \code{"FilterABM_mc"} class?
 #' @param val_out Logical, default to TRUE. Is formal validation of \strong{output} necessary to check if consistent with the \code{"FilterABM_mc"} class?
 #'
-#' @returns An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
+#' @returns A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
 #'
 #' @importFrom stats rnorm
 #' @importFrom stats rpois
@@ -145,7 +145,7 @@ FilterABM_mc <- function(x, val_in = TRUE, val_out = TRUE){
   y <- structure(y, class = c("FilterABM_mc", class(y)))
 
   if (val_out){
-    y <- validate_FilterABM_mc(y)
+    y <- FilterABM::validate_FilterABM_mc(y)
   }
 
   y

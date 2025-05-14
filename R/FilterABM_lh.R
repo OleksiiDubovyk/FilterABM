@@ -6,12 +6,13 @@
 #' The \code{"FilterABM_lh"} class is based on \code{dplyr}'s tibbles, thus \code{dplyr} functions are applicable.
 #'
 #' The local habitat object must have the following columns:
-#' \code{patch} - unique integer, patch ID,
-#' \code{env} - double, patch-specific level of the environmental factor.
+#' \code{patch} - unique integer, patch ID;
+#' \code{env} - double, patch-specific level of the environmental factor;
+#' \code{res} - non-negative double, level of the resource available in the patch.
 #'
-#' @param x A valid object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame"
+#' @param x A valid local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame"
 #'
-#' @returns An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
+#' @returns A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
 #'
 #' @import dplyr
 #' @importFrom stats rnorm
@@ -19,7 +20,7 @@
 #' @export
 #'
 #' @examples
-#' x = dplyr::tibble(patch = 1:10, env = rnorm(10))
+#' x = dplyr::tibble(patch = 1:10, env = rnorm(10), res = 1000)
 #' validate_FilterABM_lh(x)
 #'
 validate_FilterABM_lh <- function(x){
@@ -29,16 +30,16 @@ validate_FilterABM_lh <- function(x){
          call. = FALSE)
   }
 
-  if (ncol(x) != 2){
+  if (ncol(x) != 3){
     stop(
-      paste0("Exactly 2 columns expected in `FilterABM_lh` tibble, but ", ncol(x), " found"),
+      paste0("Exactly 3 columns expected in `FilterABM_lh` tibble, but ", ncol(x), " found"),
       call. = FALSE
     )
   }
 
-  if (!all(c("patch", "env") %in% colnames(x))){
+  if (!all(c("patch", "env", "res") %in% colnames(x))){
     stop(
-      paste0("Column names in `FilterABM_lh` tibble must be: `patch`, `env`. ",
+      paste0("Column names in `FilterABM_lh` tibble must be: `patch`, `env`, `res`. ",
              paste(colnames(x), sep = " "), " found."),
       call. = FALSE
     )
@@ -89,8 +90,12 @@ validate_FilterABM_lh <- function(x){
 #' The \code{"FilterABM_lh"} class is based on \code{dplyr}'s tibbles, thus \code{dplyr} functions are applicable.
 #'
 #' The local habitat object must have the following columns:
-#' \code{patch} - unique integer, patch ID,
-#' \code{env} - double, patch-specific level of the environmental factor.
+#' \code{patch} - unique integer, patch ID;
+#' \code{env} - double, patch-specific level of the environmental factor;
+#' \code{res} - non-negative double, level of the resource available in the patch.
+#' Resource is rather an ephemeral variable because it is the only variable outside of the local community that is mutable.
+#' The most efficient way to implement this fact seemed to force changes in this variable directly from functions while the \code{"FilterABM_lh"} is
+#' in the global environment (see the source code for \code{forage}).
 #'
 #' @param x Optional (i.e., if not supplied, will return an empty valid object) tibble or dataframe with the columns specified above
 #' (unique integer \code{patch}, double \code{env}).
@@ -103,19 +108,20 @@ validate_FilterABM_lh <- function(x){
 #' \code{gradient = "correlated"} - environmental factor is correlated with patch number with correlation coefficient equal \code{rho}, or
 #' \code{gradient = "clustered"} - for K clusters, there are linearly distributed local env_means and small env_sd.
 #'
-#' @returns An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
+#' @returns A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
 #'
 #' @export
 #'
 #' @examples
-#' x = dplyr::tibble(patch = 1:10, env = rnorm(10))
+#' x = dplyr::tibble(patch = 1:10, env = rnorm(10), res = 1000)
 #' FilterABM_lh(x)
 #'
 FilterABM_lh <- function(x, val_in = TRUE, val_out = TRUE, gradient = NULL){
 
   y <- tibble(
     patch = integer(0),
-    env = double(0)
+    env = double(0),
+    res = double(0)
   )
 
   if (!missing(x)){
@@ -125,12 +131,12 @@ FilterABM_lh <- function(x, val_in = TRUE, val_out = TRUE, gradient = NULL){
     y <- bind_rows(y, x)
   }
 
-  y <- y %>% select(.data$patch, .data$env)
+  y <- y %>% select(.data$patch, .data$env, .data$res)
 
   y <- structure(y, class = c("FilterABM_lh", class(y)), gradient = gradient)
 
   if (val_out){
-    y <- validate_FilterABM_lh(y)
+    y <- FilterABM::validate_FilterABM_lh(y)
   }
 
   y
@@ -156,7 +162,7 @@ summary.FilterABM_lh <- function(object, ...){
 
 #' Plot a local habitat object
 #'
-#' @param x A valid metacommunity (\code{"FilterABM_lh"}) object.
+#' @param x A valid local habitat (\code{"FilterABM_lh"}) object.
 #' @param y Parameter two.
 #' @param ... Arguments passed to or from other methods.
 #'

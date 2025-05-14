@@ -7,15 +7,9 @@
 draw_lcom(mc, lh, nind = 1, age_crit = 10, mass_crit = 5)
 }
 \arguments{
-\item{mc}{An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-\code{species} - integer, species ID, in ascending order relative to the trait value,
-\code{trait} - double, species mean trait value,
-\code{abundance} - integer, expected species abundance,
-\code{trait_sd} - non-negative double, intraspecific trait variation.}
+\item{mc}{A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).}
 
-\item{lh}{An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-\code{patch} - unique integer, patch ID,
-\code{env} - double, patch-specific level of the environmental factor.}
+\item{lh}{A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).}
 
 \item{nind}{Positive integer, a number of individuals to draw from the metacommunity.}
 
@@ -24,14 +18,7 @@ draw_lcom(mc, lh, nind = 1, age_crit = 10, mass_crit = 5)
 \item{mass_crit}{Numeric; critical mass at which half of the individuals reproduce.}
 }
 \value{
-An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-\code{species} - integer for species ID,
-\code{trait} - double for individual trait value,
-\code{age} - integer for the current individual age in time steps,
-\code{mass} - double for the current individual body mass,
-\code{lifespan} - double for maximum individual age,
-\code{repmass} - double for a critical body mass at which the individual reproduces,
-\code{patch} - integer for the patch ID in which individual currently resides.
+An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).
 }
 \description{
 Provided a metacommunity object (class \code{"FilterABM_mc")}) and the local habitat (\code{"FilterABM_lh"}),

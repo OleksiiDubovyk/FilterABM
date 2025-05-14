@@ -38,6 +38,8 @@ simcor <- function (x, ymean = 0, ysd = 1, correlation = 0) {
 #'
 #' @param npatch Positive integer, number of patches in the environment.
 #'
+#' @param res Non-negative numeric, available resource level within each patch of the local habitat.
+#'
 #' @param gradient Character, the rule by which patches get their values of env, either:
 #' \code{gradient = "random"} - default value, env is an independent random variable drawn from N(env_mean, env_sd),
 #' \code{gradient = "linear"} - env changes linearly from patch number 1 to patch number \code{npatch} with min and max drawn from 95% bound of N(env_mean, env_sd),
@@ -46,13 +48,13 @@ simcor <- function (x, ymean = 0, ysd = 1, correlation = 0) {
 #'
 #' @param K Positive integer, number of clusters if \code{gradient = "clustered"}.
 #'
-#' @param env_mean Numeric, mean value. of the environmental factor across all habitat patches.
+#' @param env_mean_lh Numeric, mean value. of the environmental factor across all habitat patches.
 #'
-#' @param env_sd Positive numeric, variation of the environmental factor across all habitat patches.
+#' @param env_sd_lh Positive numeric, variation of the environmental factor across all habitat patches.
 #'
 #' @param rho Positive numeric between \code{0} and \code{1}, correlation coefficient between patch number and environmental factor when \code{gradient = "correlated"}.
 #'
-#' @returns A tibble (dataframe) representing habitat patches (column \code{patch}) and the patch-specific value of the environmental factor (column \code{env}).
+#' @returns A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
 #'
 #' @importFrom stats rnorm
 #' @importFrom stats quantile
@@ -62,7 +64,10 @@ simcor <- function (x, ymean = 0, ysd = 1, correlation = 0) {
 #' @examples
 #' init_envt()
 #'
-init_envt <- function(npatch = 10, gradient = "random", K = 3, env_mean = 0, env_sd = 25, rho = 0.75){
+init_envt <- function(npatch = 10, res = 1000, gradient = "random", K = 3, env_mean_lh = 0, env_sd_lh = 25, rho = 0.75){
+
+  env_mean <- env_mean_lh
+  env_sd <- env_sd_lh
 
   envd = rnorm(npatch, mean = env_mean, sd = env_sd)
   env_min <- quantile(envd, 0.025) %>% unname()
@@ -89,11 +94,15 @@ init_envt <- function(npatch = 10, gradient = "random", K = 3, env_mean = 0, env
       env = envc
     )
   }else if(gradient == "correlated"){
-    envc <- simcor(x = 1:npatch, ymean = env_mean, ysd = env_sd, correlation = rho)
+    envc <- FilterABM::simcor(x = 1:npatch, ymean = env_mean, ysd = env_sd, correlation = rho)
     lh <- tibble(
       patch = 1:npatch,
       env = envc
     )
   }
-  FilterABM_lh(x = lh, gradient = gradient)
+
+  lh <- lh %>%
+    mutate(res = res)
+
+  FilterABM::FilterABM_lh(x = lh, gradient = gradient)
 }

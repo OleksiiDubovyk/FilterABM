@@ -4,29 +4,16 @@
 \alias{recruit}
 \title{Add new individuals from the metacommunity into the local community}
 \usage{
-recruit(lc, mc, lh, nind = 1, ...)
+recruit(lc, mc, lh, recruitment = 0, ...)
 }
 \arguments{
-\item{lc}{An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-\code{species} - integer for species ID,
-\code{trait} - double for individual trait value,
-\code{age} - integer for the current individual age in time steps,
-\code{mass} - double for the current individual body mass,
-\code{lifespan} - double for maximum individual age,
-\code{repmass} - double for a critical body mass at which the individual reproduces,
-\code{patch} - integer for the patch ID in which individual currently resides.}
+\item{lc}{A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc})}
 
-\item{mc}{An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-\code{species} - integer, species ID, in ascending order relative to the trait value,
-\code{trait} - double, species mean trait value,
-\code{abundance} - integer, expected species abundance,
-\code{trait_sd} - non-negative double, intraspecific trait variation.}
+\item{mc}{A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).}
 
-\item{lh}{An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-\code{patch} - unique integer, patch ID,
-\code{env} - double, patch-specific level of the environmental factor.}
+\item{lh}{A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).}
 
-\item{nind}{A number of individuals to draw, positive integer.}
+\item{recruitment}{Non-negative double, recruitment rate (i.e., expectation of number of individuals recruited into local habitat per patch per time step).}
 
 \item{...}{Other parameters applicable to \code{draw_lcom()}.}
 }

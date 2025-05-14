@@ -16,7 +16,7 @@ Each row represents a species in the regional species pool.}
 \item{val_out}{Logical, default to TRUE. Is formal validation of \strong{output} necessary to check if consistent with the \code{"FilterABM_mc"} class?}
 }
 \value{
-An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
+A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
 }
 \description{
 Build a metacommunity (\code{"FilterABM_mc"}) object.

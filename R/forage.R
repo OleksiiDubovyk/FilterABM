@@ -1,108 +1,147 @@
-#' #' Simulate foraging within a habitat patch
-#' #'
-#' #' @description
-#' #' The function takes in the description of the local community and surrounding environmental factors.
-#' #' Based on these, each individual within a community takes a turn in random sequence consuming the available resource.
-#' #' All else being equal, an individual with a trait value optimal for the local environmental factor \code{env} will consume more resource.
-#' #' If there are many individuals in the community with a similar trait value, the focal individual is less likely to consume the resource.
-#' #' Similarly, in an individuals-rich environment, the chances of consuming anything at all are reduced.
-#' #'
-#' #' @param com A tibble (dataframe) representing the \strong{local} community with the following columns:
-#' #' \code{species} - species ID;
-#' #' \code{trait} - individual trait value;
-#' #' \code{age} - current age of the individual;
-#' #' \code{mass} - current body mass of the individual;
-#' #' \code{lifespan} - maximum lifespan after reaching which the individual will perish;
-#' #' \code{repmass} - body mass after reaching which the individual will asexually reproduce into two children individuals.
-#' #'
-#' #' @param env Numeric, value of the environmental factor in the patch.
-#' #'
-#' #' @param res Numeric, value of the resource available within the patch.
-#' #'
-#' #' @param res_input Numeric, increment of the resource level within a time step.
-#' #'
-#' #' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one).
-#' #'
-#' #' @param clustering Numeric, effect of niche clustering on probability of competition. Default to one.
-#' #'
-#' #' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment. Default to one.
-#' #'
-#' #' @returns A list with the following elements:
-#' #' \code{[["com"]]} - updated community object,
-#' #' \code{[["res"]]} - available resource level,
-#' #' \code{[["res_input"]]} - increment of the resource level within a time step,
-#' #' \code{[["p_compete"]]} - sum of foraging probabilities given competition,
-#' #' \code{[["p_consume"]]} - sum of foraging probabilities given resource availability.
-#' #'
-#' #'
-#' #' @examples
-#' #' x = init_meta()
-#' #' y = draw_lcom(x, 100)
-#' #' forage(com = y, env = 0, res = 1000, res_input = 10, R = 1000)
-#' #'
-#' forage <- function(com, env, res, res_input, R, clustering = 1, dispersion = 1){
-#'   #
-#'   # `com` - local community object with the following columns:
-#'   #   `$species` - species ID
-#'   #   `$trait` - individual trait value
-#'   #   `$age` - age of the individual
-#'   #   `$mass` - body mass
-#'   #   `$lifespan` - maximum lifespan
-#'   #   `$repmass` - mass when reproduction occurs
-#'   # `env` - environmental factor value
-#'   # `res` - available resource level
-#'   # `res_input` - increase in resource level per time step
-#'   # `R` - resource level at which (or greater than which) all individuals consume resource (probability = 1)
-#'   #
-#'   # Output: a list of
-#'   #   [["com"]] - updated community object
-#'   #   [["res"]] - updated resource value
-#'   #   [["res_consumed"]] - sum of consumed resource
-#'   #   [["p_compete"]] - sum of foraging probabilities given competition
-#'   #   [["p_consume"]] - sum of foraging probabilities given resource availability
+#' Regenerate resource in local habitat patches
 #'
-#'   res <- res + res_input
-#'   res <- ifelse(res < 0, 0, res)
+#' @param lh A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
 #'
-#'   idx <- sample(1:nrow(com), size = nrow(com)) # randomize order of foraging individuals
+#' @param res_input Numeric, increment of the resource level within a time step.
 #'
-#'   com_traits <- com$trait %>% unlist() # trait values within community
+#' @returns A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
 #'
-#'   res_consumed <- 0
-#'   sum_p_compete <- 0
-#'   sum_p_consume <- 0
+#' @export
 #'
-#'   for (i in idx){
-#'     bmass <- com[i, "mass"] %>% unlist() %>% unname() # body mass of an individual
-#'     # account for resource availability
-#'     p_resource <- res/R # need for each cycle
-#'     p_resource <- ifelse(p_resource > 1, 1, p_resource)
-#'     # account for environmental filtering
-#'     t <- com[i, "trait"] %>% unlist() %>% unname() # individual trait value
-#'     p_filter <- 1 - (1/(1 + exp(-log(abs(t - env))))) # logistic probability based on difference between trait and env
-#'     # account for interactions
-#'     d <- sapply(com_traits[-i], function(x){
-#'       abs(x - t)
-#'     }) # %>% sort() # sorted absolute difference between focal individual trait and community traits
-#'     # w <- (length(d):1)/sum(1:length(d)) # weights for differences; smallest diff gets higher weights
-#'     # mwd <- mean(w*d) # mean weighted distance
-#'     mwd <- ifelse(length(d) == 0, Inf, mean(d)) # if nobody to compete with, next step will be 1
-#'     p_compete <- (1/(1 + exp(-log(mwd)))) # low probabilities for low MWD (= there are many similar individuals)
-#'     # tweak clustering / dispersion, purely for developing purposes
-#'     p_compete <- p_compete * dispersion
-#'     p_filter <- p_filter * clustering
-#'     #
-#'     feed <- runif(1) <= p_resource*(p_resource + p_compete - p_resource*p_compete) # foraging given resource availability and competition are inclusive
-#'     mass_increase <- feed*bmass*p_filter # how much more the individual gets
-#'     res <- res - mass_increase # exclude from the resource pool
-#'     com[i, "mass"] <- bmass + mass_increase # write updated body mass
-#'     res_consumed <- res_consumed + mass_increase
-#'     sum_p_compete <- sum_p_compete + p_compete
-#'     sum_p_consume <- sum_p_consume + p_resource
-#'   }
-#'   return(list(com = com,
-#'               res = res,
-#'               consumed = res_consumed,
-#'               p_compete = sum_p_compete,
-#'               p_consume = sum_p_consume))
-#' }
+#' @examples
+#' lh = init_envt()
+#' lh_input_res(lh = lh, res_input = 10)
+#'
+lh_input_res <- function(lh, res_input = 0){
+  lh %>%
+    mutate(res = .data$res + res_input,
+           res = ifelse(.data$res < 0, 0, .data$res))
+}
+
+#' Simulate foraging within a habitat patch
+#'
+#' @description
+#' The function takes in the description of the local community and surrounding environmental factors.
+#' Based on these, each individual within a community takes a turn in random sequence consuming the available resource.
+#' All else being equal, an individual with a trait value optimal for the local environmental factor \code{env} will consume more resource.
+#' If there are many individuals in the community with a similar trait value, the focal individual is less likely to consume the resource.
+#' Similarly, in an individuals-rich environment, the chances of consuming anything at all are reduced.
+#'
+#' @param lc A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).
+#'
+#' @param lh A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
+#'
+#' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one).
+#'
+#' @param clustering Numeric, effect of niche clustering on probability of competition. Default to one.
+#'
+#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment. Default to one.
+#'
+#' @returns A named list with:
+#' \code{[["lc"]]} - A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc});
+#' \code{[["lh"]]} - A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
+#'
+#' @export
+#'
+#' @examples
+#' mc = init_meta()
+#' lh = init_envt()
+#' lc = draw_lcom(mc = mc, lh = lh, nind = 100)
+#' lc = recruit(lc = lc, mc = mc, lh = lh, nind = 100)
+#' lc = adv_age(lc = lc)
+#' lc = dem(lc = lc, mc = mc)
+#' lc = disperse(lc = lc, lh = lh, dispersal = 10)
+#' forage(lc = lc, lh = lh, R = 1000)
+#'
+forage <- function(lc, lh, R, clustering = 1, dispersion = 1){
+
+  # # it was but a sorry attempt to change lh in the parent environment from the function
+  # if (!exists(deparse(substitute(lh)))){
+  #   stop(
+  #     paste0("`lh` must be defined in R's global environment for `forage` to function properly.\nPlease supply the object (i.e., define `lh <- init_envt()` prior to calling `forage(..., lh = lh, ...)`). Instead, `",
+  #            deparse(substitute(lh)), "` supplied.")
+  #   )
+  # }
+
+  # temporary local habitat
+  # add resource input and make sure the resource is not negative
+  tlh <- lh
+
+  # initialize output local community
+  out_lc <- FilterABM::FilterABM_lc()
+
+  # for each patch
+  for (p in unique(tlh$patch)){
+
+    # isolate resource level
+    res <- tlh[tlh$patch == p,]$res %>% unlist() %>% unname()
+
+    # isolate environmental factor level
+    env <- tlh[tlh$patch == p,]$env %>% unlist() %>% unname()
+
+    # isolate individuals within the patch
+    patch_lc <- lc %>%
+      filter(.data$patch == p)
+
+    # randomize order of foraging individuals
+    idx <- sample(x = 1:nrow(patch_lc), size = nrow(patch_lc))
+
+    # trait values within the patch community
+    com_traits <- patch_lc$trait %>% unlist()
+
+    #for each individual within the patch
+    for (i in idx){
+
+      # body mass of an individual
+      bmass <- patch_lc[i, "mass"] %>% unlist() %>% unname()
+
+      # account for resource availability
+      p_resource <- res/R # need for each cycle
+      p_resource <- ifelse(p_resource > 1, 1, p_resource)
+
+      # account for environmental filtering
+      t <- patch_lc[i, "trait"] %>% unlist() %>% unname() # individual trait value
+      # logistic probability based on difference between trait and env
+      p_filter <- 1 - (1/(1 + exp(-log(abs(t - env)))))
+
+      # account for interactions
+      d <- sapply(com_traits[-i], function(x){
+        abs(x - t)
+      })
+      mwd <- ifelse(length(d) == 0, Inf, mean(d)) # if nobody to compete with, next step will be 1
+      p_compete <- (1/(1 + exp(-log(mwd)))) # low probabilities for low MWD (= there are many similar individuals)
+
+      # tweak clustering / dispersion, purely for developing purposes
+      p_compete <- p_compete * dispersion
+      p_filter <- p_filter * clustering
+
+      # is individual going to feed?
+      feed <- runif(1) <= p_resource*(p_resource + p_compete - p_resource*p_compete)
+      mass_increase <- feed*bmass*p_filter # how much more the individual gets
+
+      res <- res - mass_increase # exclude from the resource pool
+
+      patch_lc[i, "mass"] <- bmass + mass_increase # write updated body mass
+
+    }
+
+    out_lc <- bind_rows(
+      out_lc,
+      patch_lc
+    )
+
+    tlh[tlh$patch == p, "res"] <- res
+
+  }
+
+  # # it was but a sorry attempt to change lh in the parent environment from the function
+  # # update lh in R global environment
+  # unlockBinding(deparse(substitute(lh)), env = parent.frame())
+  # eval.parent(bquote(.(substitute(lh)) <<- .(substitute(tlh))))
+
+  list(
+    lc = FilterABM::FilterABM_lc(x = out_lc, val_in = FALSE),
+    lh = tlh
+  )
+
+}

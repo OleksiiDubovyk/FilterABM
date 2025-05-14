@@ -38,15 +38,9 @@ pred_logit <- function(p, crit){
 #' The major difference from \code{recruit()} is that \code{draw_meta()} returns a set of individuals drawn from the metacommunity,
 #' while \code{recruit()} mutates the local community adding new individuals.
 #'
-#' @param mc An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-#' \code{species} - integer, species ID, in ascending order relative to the trait value,
-#' \code{trait} - double, species mean trait value,
-#' \code{abundance} - integer, expected species abundance,
-#' \code{trait_sd} - non-negative double, intraspecific trait variation.
+#' @param mc A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
 #'
-#' @param lh An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-#' \code{patch} - unique integer, patch ID,
-#' \code{env} - double, patch-specific level of the environmental factor.
+#' @param lh A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
 #'
 #' @param nind Positive integer, a number of individuals to draw from the metacommunity.
 #'
@@ -54,14 +48,7 @@ pred_logit <- function(p, crit){
 #'
 #' @param mass_crit Numeric; critical mass at which half of the individuals reproduce.
 #'
-#' @returns An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-#' \code{species} - integer for species ID,
-#' \code{trait} - double for individual trait value,
-#' \code{age} - integer for the current individual age in time steps,
-#' \code{mass} - double for the current individual body mass,
-#' \code{lifespan} - double for maximum individual age,
-#' \code{repmass} - double for a critical body mass at which the individual reproduces,
-#' \code{patch} - integer for the patch ID in which individual currently resides.
+#' @returns An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).
 #'
 #' @importFrom stats rexp
 #' @importFrom stats runif
@@ -102,11 +89,11 @@ draw_lcom <- function(mc, lh, nind = 1, age_crit = 10, mass_crit = 5){
       age = 1,
       mass = 1,
       lifespan = rexp(nind, 1/age_crit) %>% round(),
-      repmass = pred_logit(p = runif(nind, 0.1, 0.9), crit = mass_crit),
+      repmass = FilterABM::pred_logit(p = runif(nind, 0.1, 0.9), crit = mass_crit),
       patch = sample(x = unique(lh$patch), size = nind, replace = TRUE)
     )
 
-  lc <- FilterABM_lc(x = lucky, val_in = FALSE, val_out = TRUE)
+  lc <- FilterABM::FilterABM_lc(x = lucky, val_in = FALSE, val_out = TRUE)
 
   lc
 
@@ -124,30 +111,19 @@ draw_lcom <- function(mc, lh, nind = 1, age_crit = 10, mass_crit = 5){
 #' a small random error will be added drawn from a normal distribution with SD equal to \code{trait_sd}.
 #'
 #'
-#' @param lc An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-#' \code{species} - integer for species ID,
-#' \code{trait} - double for individual trait value,
-#' \code{age} - integer for the current individual age in time steps,
-#' \code{mass} - double for the current individual body mass,
-#' \code{lifespan} - double for maximum individual age,
-#' \code{repmass} - double for a critical body mass at which the individual reproduces,
-#' \code{patch} - integer for the patch ID in which individual currently resides.
+#' @param lc A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc})
 #'
-#' @param mc An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-#' \code{species} - integer, species ID, in ascending order relative to the trait value,
-#' \code{trait} - double, species mean trait value,
-#' \code{abundance} - integer, expected species abundance,
-#' \code{trait_sd} - non-negative double, intraspecific trait variation.
+#' @param mc A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
 #'
-#' @param lh An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" with the following columns:
-#' \code{patch} - unique integer, patch ID,
-#' \code{env} - double, patch-specific level of the environmental factor.
+#' @param lh A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
 #'
-#' @param nind A number of individuals to draw, positive integer.
+#' @param recruitment Non-negative double, recruitment rate (i.e., expectation of number of individuals recruited into local habitat per patch per time step).
 #'
 #' @param ... Other parameters applicable to \code{draw_lcom()}.
 #'
 #' @returns An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame".
+#'
+#' @importFrom stats rpois
 #'
 #' @export
 #'
@@ -157,14 +133,9 @@ draw_lcom <- function(mc, lh, nind = 1, age_crit = 10, mass_crit = 5){
 #' lc = draw_lcom(mc = mc, lh = lh)
 #' recruit(lc = lc, mc = mc, lh = lh)
 #'
-recruit <- function(lc, mc, lh, nind = 1, ...){
+recruit <- function(lc, mc, lh, recruitment = 0, ...){
 
-  if (nind < 0){
-    stop(
-      paste0("`recruit` must draw a non-negative number of individuals, however, `nind` was set to ", nind),
-      call. = FALSE
-    )
-  }
+  nind <- rpois(n = 1, lambda = recruitment*nrow(lh))
 
   if (nind == 0){
 
@@ -175,7 +146,7 @@ recruit <- function(lc, mc, lh, nind = 1, ...){
     return(
       bind_rows(
         lc,
-        draw_lcom(mc = mc, lh = lh, nind = nind, ...)
+        FilterABM::draw_lcom(mc = mc, lh = lh, nind = nind, ...)
       )
     )
 

@@ -7,10 +7,10 @@
 validate_FilterABM_lc(x)
 }
 \arguments{
-\item{x}{A valid object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"}
+\item{x}{A valid local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"}
 }
 \value{
-A valid object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"
+A valid local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"
 }
 \description{
 Validate a local community (\code{"FilterABM_lc"}) object.

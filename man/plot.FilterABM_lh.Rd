@@ -7,7 +7,7 @@
 \method{plot}{FilterABM_lh}(x, y, ...)
 }
 \arguments{
-\item{x}{A valid metacommunity (\code{"FilterABM_lh"}) object.}
+\item{x}{A valid local habitat (\code{"FilterABM_lh"}) object.}
 
 \item{y}{Parameter two.}
 

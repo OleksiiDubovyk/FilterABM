@@ -22,7 +22,7 @@ Each row represents a discrete habitat patch within the local habitat with its o
 \code{gradient = "clustered"} - for K clusters, there are linearly distributed local env_means and small env_sd.}
 }
 \value{
-An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
+A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
 }
 \description{
 Build a local habitat (\code{"FilterABM_lh"}) object.
@@ -30,11 +30,15 @@ Build a local habitat (\code{"FilterABM_lh"}) object.
 The \code{"FilterABM_lh"} class is based on \code{dplyr}'s tibbles, thus \code{dplyr} functions are applicable.
 
 The local habitat object must have the following columns:
-\code{patch} - unique integer, patch ID,
-\code{env} - double, patch-specific level of the environmental factor.
+\code{patch} - unique integer, patch ID;
+\code{env} - double, patch-specific level of the environmental factor;
+\code{res} - non-negative double, level of the resource available in the patch.
+Resource is rather an ephemeral variable because it is the only variable outside of the local community that is mutable.
+The most efficient way to implement this fact seemed to force changes in this variable directly from functions while the \code{"FilterABM_lh"} is
+in the global environment (see the source code for \code{forage}).
 }
 \examples{
-x = dplyr::tibble(patch = 1:10, env = rnorm(10))
+x = dplyr::tibble(patch = 1:10, env = rnorm(10), res = 1000)
 FilterABM_lh(x)
 
 }

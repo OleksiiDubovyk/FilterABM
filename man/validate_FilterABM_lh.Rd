@@ -7,10 +7,10 @@
 validate_FilterABM_lh(x)
 }
 \arguments{
-\item{x}{A valid object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame"}
+\item{x}{A valid local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame"}
 }
 \value{
-An object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
+A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame".
 }
 \description{
 Validate a local habitat (\code{"FilterABM_lh"}) object.
@@ -18,11 +18,12 @@ Validate a local habitat (\code{"FilterABM_lh"}) object.
 The \code{"FilterABM_lh"} class is based on \code{dplyr}'s tibbles, thus \code{dplyr} functions are applicable.
 
 The local habitat object must have the following columns:
-\code{patch} - unique integer, patch ID,
-\code{env} - double, patch-specific level of the environmental factor.
+\code{patch} - unique integer, patch ID;
+\code{env} - double, patch-specific level of the environmental factor;
+\code{res} - non-negative double, level of the resource available in the patch.
 }
 \examples{
-x = dplyr::tibble(patch = 1:10, env = rnorm(10))
+x = dplyr::tibble(patch = 1:10, env = rnorm(10), res = 1000)
 validate_FilterABM_lh(x)
 
 }

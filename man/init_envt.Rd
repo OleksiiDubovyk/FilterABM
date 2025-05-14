@@ -6,15 +6,18 @@
 \usage{
 init_envt(
   npatch = 10,
+  res = 1000,
   gradient = "random",
   K = 3,
-  env_mean = 0,
-  env_sd = 25,
+  env_mean_lh = 0,
+  env_sd_lh = 25,
   rho = 0.75
 )
 }
 \arguments{
 \item{npatch}{Positive integer, number of patches in the environment.}
+
+\item{res}{Non-negative numeric, available resource level within each patch of the local habitat.}
 
 \item{gradient}{Character, the rule by which patches get their values of env, either:
 \code{gradient = "random"} - default value, env is an independent random variable drawn from N(env_mean, env_sd),
@@ -24,14 +27,14 @@ init_envt(
 
 \item{K}{Positive integer, number of clusters if \code{gradient = "clustered"}.}
 
-\item{env_mean}{Numeric, mean value. of the environmental factor across all habitat patches.}
+\item{env_mean_lh}{Numeric, mean value. of the environmental factor across all habitat patches.}
 
-\item{env_sd}{Positive numeric, variation of the environmental factor across all habitat patches.}
+\item{env_sd_lh}{Positive numeric, variation of the environmental factor across all habitat patches.}
 
 \item{rho}{Positive numeric between \code{0} and \code{1}, correlation coefficient between patch number and environmental factor when \code{gradient = "correlated"}.}
 }
 \value{
-A tibble (dataframe) representing habitat patches (column \code{patch}) and the patch-specific value of the environmental factor (column \code{env}).
+A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
 }
 \description{
 Create a tibble (dataframe) representing the local habitat as a set of habitat patches with slightly different levels of the environmental factor.

@@ -7,10 +7,10 @@
 validate_FilterABM_mc(x)
 }
 \arguments{
-\item{x}{A valid object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame"}
+\item{x}{A valid metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame"}
 }
 \value{
-An object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
+A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame".
 }
 \description{
 Validate a metacommunity (\code{"FilterABM_mc"}) object.

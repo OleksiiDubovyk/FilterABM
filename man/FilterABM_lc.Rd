@@ -16,7 +16,7 @@ Each row represents an individual in the local community.}
 \item{val_out}{Logical, default to TRUE. Is formal validation of \strong{output} necessary to check if consistent with the \code{"FilterABM_lc"} class?}
 }
 \value{
-An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame".
+A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame".
 }
 \description{
 Validate a local community (\code{"FilterABM_lc"}) object.

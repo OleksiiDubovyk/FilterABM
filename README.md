@@ -1,9 +1,54 @@
 # FilterABM: An agent-based model of trait-based environmental filtering
 
-*Oleksii Dubovyk*
+***Oleksii Dubovyk***
+
+*Department of Biological Sciences, Old Dominion University, Norfolk, VA, 23529, USA*
 
 An agent-based model that includes a simplified case of environmental filtering with one abstract trait, one abstract environmental factor, and one abstract resource. 
 The model attempts to predict the abundance and trait distribution in a local community shaped by the processes of community assembly, niche clustering, and dispersion.
+
+## Installation
+
+There is no current plan to submit this package to CRAN.
+
+You can install the package directly from GitHub:
+
+```r
+if(!require("devtools")) install.packages("devtools")
+devtools::install_github("OleksiiDubovyk/FilterABM")
+```
+
+The package was developed in `R 4.4.2` and uses the following packages:
+
+- `dplyr >= 1.1.4`
+- `tibble >= 3.2.1`
+- `magrittr >= 2.0.3` (note that it still uses the `%>%` pipe, not the new native `|>`)
+- `grDevices >= 4.4.2`
+- `graphics >= 4.4.2`
+- `stats >= 4.4.2`
+
+The package was built with the help of 
+[`devtools 2.4.5`](https://devtools.r-lib.org/), 
+[`usethis 3.1.0`](https://usethis.r-lib.org),
+[`testthat 3.2.3`](https://testthat.r-lib.org), 
+[`roxygen2 7.3.2`](https://roxygen2.r-lib.org/), 
+all in Posit RStudio 2024.12.0+467.
+
+## Usage
+
+### 1. Initialize the simulated objects
+
+```r
+# Create the metacommunity
+mc <- init_meta()
+# Create the local habitat
+lh <- init_envt(npatch = 100)
+# Draw the initial local community
+lc <- draw_meta(mc = mc, lh = lh, nind = 100)
+```
+### 2. Run simulation for the desired number of time steps
+
+TBD
 
 ## Structure
 
@@ -51,7 +96,12 @@ Notice how it changes if `trait_sd`s are non-zero.
 Class defined as `"FilterABM_lh"`. The local habitat object is represented as a table with the following columns:
 
 - `patch`: unique integer, patch ID,
-- `env`:  double, patch-specific level of the environmental factor.
+- `env`:  double, patch-specific level of the environmental factor,
+- `res`: non-negative numeric, resource level.
+
+Resource level is supposed to change over time, as individuals consume it and it gets replenished at a specified rate. 
+To implement this fact, the `"FilterABM_lh"` gets mutated every time step directly in the global environment. 
+This means that the `"FilterABM_lh"` object must exist in the local environment during the simulation.
 
 **Initialize** a new local habitat object with [`init_envt()`](R/init_envt.R).
 
@@ -73,6 +123,8 @@ plot(init_envt())
 ```
 <img src="README/fig-2.png" width="672" style="display: block; margin: auto;" />
 
+- `lh_input_res(lh = init_envt, res_input = 10)` replenishes resource level in the local habitat object by an increment of `res_input`.
+
 #### **Local community**
 
 Class defined as `"FilterABM_lc"`. The local community object is represented as a table with the following columns:
@@ -89,15 +141,15 @@ The initial local community cannot be initialized from scratch (e.g., like `init
 
 Formal ***constructor & validator***: [`FilterABM_lc()`](R/FilterABM_lc.R).
 
-## Usage
+##### Methods
 
-### 1. Initialize the simulated objects
+The whole package pretty much rotates around a `"FilterABM_lc"`, constantly mutating it:
 
-```r
-# Create the metacommunity
-mc <- init_meta()
-# Create the local habitat
-lh <- init_envt(npatch = 100)
-# Draw the initial local community
-lc <- draw_meta(mc = mc, lh = lh, nind = 100)
-```
+- `draw_lcom(mc = mc, lh = lh)` creates an initial local community with a random draw from the metacommunity `mc`,
+- `recruit(lc = lc, mc = mc, lh = lh)` adds freshly recruited individuals from the metacommunity `mc` into the local community `lc`,
+- `adv_age(lc = lc)` advances age of all individuals in the local community `lc` by one time step,
+- `dem(lc = lc, mc = mc)` eliminates all individuals whose age exceeds their maximum lifespan and 
+simulates asexual reproduction of individuals whose body mass reached their critical reproductive mass, 
+allowing for trait heredity across generations,
+- `disperse(lc = lc, lh = lh)` changes patch ID assignment for a random subset of individuals, simulating patch-to-patch dispersal,
+- `forage(lc = lc, lh = lh, R = 1000)` simulates individuals consuming the resource in `lh`, thus returning a list of the local community and the local habitat with updated resource level.

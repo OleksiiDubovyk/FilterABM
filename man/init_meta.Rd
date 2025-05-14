@@ -6,32 +6,28 @@
 \usage{
 init_meta(
   M = 120,
-  env_mean = 0,
-  env_sd = 1,
+  env_mean_mc = 0,
+  env_sd_mc = 1,
   cauchy = 1,
   trait_sds = 0,
-  max = 1e+06
+  max_abun = 1e+06
 )
 }
 \arguments{
-\item{M}{Integer, species richness within metacommunity, positive integer}
+\item{M}{Integer, species richness within metacommunity, positive integer.}
 
-\item{env_mean}{Numeric, mean environmental factor value within the extent of a metacommunity}
+\item{env_mean_mc}{Numeric, mean environmental factor value within the extent of a metacommunity.}
 
-\item{env_sd}{Non-negative numeric, variation of environmental factor value within the extent of a metacommunity}
+\item{env_sd_mc}{Non-negative numeric, variation of environmental factor value within the extent of a metacommunity.}
 
-\item{cauchy}{Non-negative numeric, delta parameter in Cauchy function used to connect species' trait values and log-abundances}
+\item{cauchy}{Non-negative numeric, delta parameter in Cauchy function used to connect species' trait values and log-abundances.}
 
-\item{trait_sds}{Non-negative numeric, intraspecific trait variation; either a single value if same for all species, or a M-length vector}
+\item{trait_sds}{Non-negative numeric, intraspecific trait variation; either a single value if same for all species, or a M-length vector.}
 
-\item{max}{Numeric, the maximum abundance allowed for the most abundant species in the metacommunity.}
+\item{max_abun}{Numeric, the maximum abundance allowed for the most abundant species in the metacommunity.}
 }
 \value{
-A metacommunity \code{"FilterABM_mc"}-class tibble with the following columns:
-\code{species} - integer, species ID, in ascending order relative to the trait value,
-\code{trait} - double, species mean trait value,
-\code{abundance} - integer, expected species abundance,
-\code{trait_sd} - non-negative double, intraspecific trait variation.
+A metacommunity \code{"FilterABM_mc"}-class tibble (see \code{?FilterABM::FilterABM_mc}).
 }
 \description{
 Create a metacommunity (\code{"FilterABM_mc"}) object, a tibble with rows describing different abstract hypothetical species in the species pool,

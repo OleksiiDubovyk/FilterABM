@@ -14,9 +14,9 @@
 #' \code{repmass} - double for a critical body mass at which the individual reproduces,
 #' \code{patch} - integer for the patch ID in which individual currently resides.
 #'
-#' @param x A valid object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"
+#' @param x A valid local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"
 #'
-#' @returns A valid object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"
+#' @returns A valid local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame"
 #'
 #' @export
 #'
@@ -123,7 +123,7 @@ validate_FilterABM_lc <- function(x){
 #' @param val_in Logical, default to TRUE. Is formal validation of \strong{input} necessary to check if consistent with the \code{"FilterABM_lc"} class?
 #' @param val_out Logical, default to TRUE. Is formal validation of \strong{output} necessary to check if consistent with the \code{"FilterABM_lc"} class?
 #'
-#' @returns An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame".
+#' @returns A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame".
 #'
 #' @export
 #'
@@ -144,7 +144,7 @@ FilterABM_lc <- function(x, val_in = TRUE, val_out = TRUE){
 
   if (!missing(x)){
     if (val_in){
-      x <- validate_FilterABM_lc(x)
+      x <- FilterABM::validate_FilterABM_lc(x)
     }
     y <- bind_rows(y, x)
   }
@@ -154,7 +154,7 @@ FilterABM_lc <- function(x, val_in = TRUE, val_out = TRUE){
   y <- structure(y, class = c("FilterABM_lc", class(y)))
 
   if (val_out){
-    y <- validate_FilterABM_lc(y)
+    y <- FilterABM::validate_FilterABM_lc(y)
   }
 
   y
@@ -172,6 +172,7 @@ summary.FilterABM_lc <- function(object, ...){
   list(
     nind = nrow(object),
     species_richness = length(unique(object$species)),
+    mean_trait = mean(object$trait),
     trait_distribution = density(object$trait)
   )
   # rkde <- function(kde, n = 1) {
