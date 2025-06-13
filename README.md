@@ -27,6 +27,7 @@ The package was developed in `R 4.4.2` and uses the following packages:
 - `graphics >= 4.4.2`
 - `stats >= 4.4.2`
 - `progress >= 1.2.3`
+- `ggplot2 >= 3.5.2`
 
 The package was built with the help of 
 [`devtools 2.4.5`](https://devtools.r-lib.org/), 
@@ -41,21 +42,25 @@ all in Posit RStudio 2024.12.0+467.
 
 ```r
 # Create the metacommunity
-mc <- init_meta()
+# mc <- init_meta() # will suffice, or you can specify parameters
+mc <- init_meta(env_mean_mc = 0, env_sd_mc = 1, cauchy = 1, trait_sds = 0.5)
 # Create the local habitat
-lh <- init_envt(npatch = 100)
+# lh <- init_envt(npatch = 100) # will suffice, or
+lh = init_envt(env_mean_lh = 2, env_sd_lh = 0.1, npatch = 100, gradient = "random")
 # Draw the initial local community
-lc <- draw_lcom(mc = mc, lh = lh, nind = 100)
+lc = draw_lcom(mc = mc, lh = lh, nind = 10000)
 ```
 ### 2. Run simulation for the desired number of time steps
 
 ```r
 # run the simulation
-# beware - it takes a couple minutes
+# beware - it takes some time
 runsim <- run_sim(mc = mc, lh = lh, lc = lc, 
   nsteps = 1000, 
   progress_bar = T, 
-  recruitment = 0.05, dispersal = 10, res_input = 1, age_crit = 10, mass_crit = 2)
+  recruitment = 0, dispersal = 10, 
+  res_input = 10, 
+  age_crit = 10, mass_crit = 1.25)
 # view the results over time
 plot_run_sim(runsim)
 ```

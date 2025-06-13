@@ -74,7 +74,7 @@ run_sim <- function(mc, lh, lc,
     stop("`nsteps` in `run_FilterABM` must be positive.")
   }
 
-  # save objects as they were in the beginning
+  # double check if lc is missing - not a big deal if it does
   if (missing(lc)){
     lc <- draw_lcom(mc = mc, lh = lh, nind = 1, age_crit = age_crit, mass_crit = mass_crit)
   }
@@ -83,8 +83,8 @@ run_sim <- function(mc, lh, lc,
   hab_patches <- lh$patch
   mc_species <- mc$species
   mc_traits <- seq(
-    from = unname(quantile(mc$trait, probs = 0) - (quantile(mc$trait, probs = 0.15) - quantile(mc$trait, probs = 0))),
-    to = unname(quantile(mc$trait, probs = 1) + (quantile(mc$trait, probs = 1) - quantile(mc$trait, probs = 0.85))),
+    from = unname(quantile(mc$trait, probs = 0) - (quantile(mc$trait, probs = 0.5) - quantile(mc$trait, probs = 0))),
+    to = unname(quantile(mc$trait, probs = 1) + (quantile(mc$trait, probs = 1) - quantile(mc$trait, probs = 0.5))),
     length.out = 100
   )
 
@@ -216,4 +216,128 @@ plot_run_sim <- function(runsim){
   p3$z <- runsim$traits
   image(p3$x, p3$y, p3$z, xlab = "Time step", ylab = "Trait value", main = "Trait distribution")
   lines(x = 2:nrow(runsim$traits) - 1, y = runsim$trait_means)
+}
+
+#' [Long output] Run a simulation of environmental filtering on specified metacommunity, local habitat, and local community objects
+#'
+#' @description
+#' Requires an input of pre-defined metacommunity, local habitat, and local community objects, the two latter of which are iteratively modified to reflect changes caused by environmental filtering.
+#' Unlike \code{run_FilterABM()}, this function is not fully enclosed, but expects pre-initialized objects.
+#' This allows running multiple simulations on identical input.
+#'
+#' Unlike \code{run_sim()}, it saves the data from each time step, which does provide more insight on trait distribution across individuals with time, but is more memory-intensive.
+#'
+#'
+#' @param mc A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
+#' @param lh A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
+#' @param lc A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).
+#'
+#' @param nsteps Positive integer, number of simulation time steps.
+#'
+#' @param progress_bar Logical, whether to show the progress bar for the simulation run; default to FALSE.
+#'
+#' @param age_crit Numeric; critical age at which half of the individuals die. Feeds into \code{draw_lcom()} and \code{dem()}.
+#' @param mass_crit Numeric; critical mass at which half of the individuals reproduce. Feeds into \code{draw_lcom()} and \code{dem()}.
+#'
+#' @param recruitment Non-negative double, recruitment rate (i.e., expectation of number of individuals recruited into local habitat per patch per time step). Feeds into \code{recruit()}.
+#'
+#' @param dispersal Non-negative numeric, dispersal rate per habitat patch, i.e., expectation of the number of individuals per patch that disperse to a neighboring patch. Feeds into \code{dispersal()}.
+#'
+#' @param res_input Numeric, increment of the resource level within a time step. Feeds into \code{lh_input_res()}.
+#' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.
+#'
+#' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one. Feeds into \code{forage()}.
+#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one. Feeds into \code{forage()}.
+#'
+#' @returns A quasi-"FilterABM_lc" local community object with an additional column for time step.
+#'
+#' @import progress
+#'
+#' @export
+#'
+run_sim_ <- function(mc, lh, lc,
+                    nsteps = 500,
+                    progress_bar = FALSE,
+                    age_crit = 10, mass_crit = 5,
+                    recruitment = 0.05,
+                    dispersal = 0.05,
+                    res_input = 10, R = 1000,
+                    clustering = 1, dispersion = 1){
+
+  # formal checks
+  if ((nsteps %% 1) != 0){
+    stop("`nsteps` in `run_FilterABM` must be integer.")
+  }
+
+  if (nsteps < 1){
+    stop("`nsteps` in `run_FilterABM` must be positive.")
+  }
+
+  # double check if lc is missing - not a big deal if it does
+  if (missing(lc)){
+    lc <- draw_lcom(mc = mc, lh = lh, nind = 1, age_crit = age_crit, mass_crit = mass_crit)
+  }
+
+  # initialize additional output
+  lc_out <- lc %>%
+    mutate(timestep = 0)
+  hab_patches <- lh$patch
+  out_lh <- matrix(data = NA, nrow = nsteps + 1, ncol = length(hab_patches))
+  out_res_consumed <- numeric(nsteps)
+
+  # progress bar if asked for
+  if (progress_bar){
+    pb <- progress::progress_bar$new(
+      format = "Simulation running [:bar] :percent step :current - elapsed :elapsed  ETA: :eta",
+      total = nsteps, clear = FALSE, width = 100)
+  }
+
+  for (step in 1:nsteps){
+
+    # update progress bar
+    if (progress_bar) pb$tick()
+
+    # stop if community goes extinct
+    if (nrow(lc) == 0) break
+
+    # == SIMULATION BODY ==
+
+    # recruitment
+    lc <- recruit(lc = lc, mc = mc, lh = lh, recruitment = recruitment)
+    # advance age
+    lc <- adv_age(lc = lc)
+    # demography
+    lc <- dem(lc = lc, mc = mc, age_crit = age_crit, mass_crit = mass_crit)
+    # dispersal
+    lc <- disperse(lc = lc, lh = lh, dispersal = dispersal)
+    # foraging
+    res_prior <- sum(lh$res) # save resource level prior to foraging
+    frg_out <- forage(lc = lc, lh = lh, R = R, clustering = clustering, dispersion = dispersion) # forage
+    lc <- frg_out[["lc"]] # extract local community
+    lh <- frg_out[["lh"]]
+
+    # == END ==
+
+    # write output
+
+    lc_out <- lc_out %>%
+      add_row(lc %>% mutate(timestep = step))
+    out_lh[step + 1, ] <- lh$res[sapply(hab_patches, function(j) which(lh$patch == j))]
+    out_res_consumed[step] <- res_prior - sum(lh$res)
+
+    # replenish habitat resource
+    lh <- lh_input_res(lh = lh, res_input = res_input)
+
+  }
+
+  return(
+    list("lcs" = lc_out,
+         "habitat" = out_lh,
+         "consumed_resource" = out_res_consumed,
+         "coord" = list(
+           "lh" = hab_patches
+         )
+    )
+  )
+
 }
