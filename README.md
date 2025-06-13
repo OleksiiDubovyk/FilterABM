@@ -26,10 +26,11 @@ The package was developed in `R 4.4.2` and uses the following packages:
 - `grDevices >= 4.4.2`
 - `graphics >= 4.4.2`
 - `stats >= 4.4.2`
+- `progress >= 1.2.3`
 
 The package was built with the help of 
 [`devtools 2.4.5`](https://devtools.r-lib.org/), 
-[`usethis 3.1.0`](https://usethis.r-lib.org),
+[`usethis 3.1.0`](https://usethis.r-lib.org), 
 [`testthat 3.2.3`](https://testthat.r-lib.org), 
 [`roxygen2 7.3.2`](https://roxygen2.r-lib.org/), 
 all in Posit RStudio 2024.12.0+467.
@@ -44,11 +45,21 @@ mc <- init_meta()
 # Create the local habitat
 lh <- init_envt(npatch = 100)
 # Draw the initial local community
-lc <- draw_meta(mc = mc, lh = lh, nind = 100)
+lc <- draw_lcom(mc = mc, lh = lh, nind = 100)
 ```
 ### 2. Run simulation for the desired number of time steps
 
-TBD
+```r
+# run the simulation
+# beware - it takes a couple minutes
+runsim <- run_sim(mc = mc, lh = lh, lc = lc, 
+  nsteps = 1000, 
+  progress_bar = T, 
+  recruitment = 0.05, dispersal = 10, res_input = 1, age_crit = 10, mass_crit = 2)
+# view the results over time
+plot_run_sim(runsim)
+```
+<img src="README/fig-0.png" width="672" style="display: block; margin: auto;" />
 
 ## Structure
 
@@ -142,6 +153,13 @@ The initial local community cannot be initialized from scratch (e.g., like `init
 Formal ***constructor & validator***: [`FilterABM_lc()`](R/FilterABM_lc.R).
 
 ##### Methods
+
+Plot the trait distribution of the local community, where each color corresponds to a different species.
+
+```r
+plot(lc)
+```
+<img src="README/fig-3.png" width="672" style="display: block; margin: auto;" />
 
 The whole package pretty much rotates around a `"FilterABM_lc"`, constantly mutating it:
 

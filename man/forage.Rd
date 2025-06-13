@@ -13,9 +13,9 @@ forage(lc, lh, R, clustering = 1, dispersion = 1)
 
 \item{R}{Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one).}
 
-\item{clustering}{Numeric, effect of niche clustering on probability of competition. Default to one.}
+\item{clustering}{Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.}
 
-\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment. Default to one.}
+\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.}
 }
 \value{
 A named list with:

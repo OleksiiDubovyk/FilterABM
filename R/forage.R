@@ -33,9 +33,9 @@ lh_input_res <- function(lh, res_input = 0){
 #'
 #' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one).
 #'
-#' @param clustering Numeric, effect of niche clustering on probability of competition. Default to one.
+#' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
 #'
-#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment. Default to one.
+#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
 #'
 #' @returns A named list with:
 #' \code{[["lc"]]} - A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc});
@@ -62,6 +62,14 @@ forage <- function(lc, lh, R, clustering = 1, dispersion = 1){
   #            deparse(substitute(lh)), "` supplied.")
   #   )
   # }
+
+  # formal checks
+  if (any(c(clustering, dispersion) > 1)){
+    stop("in `forage()`, clustering and dispersion parameters cannot be greater than 1")
+  }
+  if (any(c(clustering, dispersion) < 0)){
+    stop("in `forage()`, clustering and dispersion parameters cannot be lower than 0")
+  }
 
   # temporary local habitat
   # add resource input and make sure the resource is not negative
@@ -111,9 +119,17 @@ forage <- function(lc, lh, R, clustering = 1, dispersion = 1){
       mwd <- ifelse(length(d) == 0, Inf, mean(d)) # if nobody to compete with, next step will be 1
       p_compete <- (1/(1 + exp(-log(mwd)))) # low probabilities for low MWD (= there are many similar individuals)
 
-      # tweak clustering / dispersion, purely for developing purposes
-      p_compete <- p_compete * dispersion
-      p_filter <- p_filter * clustering
+      # tweak the effects of niche clustering / dispersion
+      if (dispersion < 1){
+        p_compete <- sample(x = c(p_compete, 1), size = 1, prob = c(dispersion, 1 - dispersion))
+        # if the effect of niche dispersion is low, then it is more likely that the competition is low
+        # (i.e., I don't care how different is my trait from others)
+      }
+      if (clustering < 1){
+        p_filter <- sample(x = c(p_filter, 1), size = 1, prob = c(clustering, 1 - clustering))
+        # if the effect of niche filtering is low, then it is more likely that resource consumption is equal
+        # (i.e., I don't care how different my trait is from the local environment)
+      }
 
       # is individual going to feed?
       feed <- runif(1) <= p_resource*(p_resource + p_compete - p_resource*p_compete)

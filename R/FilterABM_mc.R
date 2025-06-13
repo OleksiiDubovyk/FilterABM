@@ -175,6 +175,7 @@ summary.FilterABM_mc <- function(object, ...){
 #' @exportS3Method base::plot
 #'
 plot.FilterABM_mc <- function(x, y, ...){
+  graphics.off()
   object <- x
   par(mfrow = c(2, 2))
   # Rank-abundance  (Whittaker) plot
@@ -201,11 +202,11 @@ plot.FilterABM_mc <- function(x, y, ...){
       ) %>% unlist()
   )%>%
     density()
+  # trait_density <- density(x = object$trait, weights = object$abundance) # won't work, no variation for weights
   plot(trait_density, main = "Trait abundance distribution", xlab = "Trait value", ylab = "Dens. of ind.")
   polygon(trait_density, col = "purple")
   # Traits by species
   trait_bysp <- density(object$trait)
   plot(trait_bysp, main = "Traits across species", xlab = "Trait value", ylab = "Dens. of species")
   polygon(trait_bysp, col = "lightblue")
-  par(mfrow = c(1, 1))
 }

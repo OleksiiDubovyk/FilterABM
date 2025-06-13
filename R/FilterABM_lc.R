@@ -169,13 +169,52 @@ FilterABM_lc <- function(x, val_in = TRUE, val_out = TRUE){
 #' @exportS3Method base::summary
 #'
 summary.FilterABM_lc <- function(object, ...){
+  if (nrow(object) > 1){
+    kde <- density(x = object$trait)
+  }else{
+    kde <- density(x = object$trait, bw = 1)
+  }
   list(
     nind = nrow(object),
     species_richness = length(unique(object$species)),
     mean_trait = mean(object$trait),
-    trait_distribution = density(object$trait)
+    trait_distribution = kde
   )
-  # rkde <- function(kde, n = 1) {
-  #   sample(x = kde$x, size = n, replace = TRUE, prob = kde$y) + rnorm(n = n, sd = kde$bw)
-  # }
+}
+
+#' Plot a local community object
+#'
+#' @param x A valid local habitat (\code{"FilterABM_lc"}) object.
+#' @param y Parameter two.
+#' @param ... Arguments passed to or from other methods.
+#'
+#' @import ggplot2
+#'
+#' @exportS3Method base::plot
+#'
+plot.FilterABM_lc <- function(x, y, ...){
+  graphics.off()
+
+  S <- unique(x$species)
+  n <- nrow(x)
+
+  # trait density vs species
+    ggplot2::ggplot() +
+    ggplot2::geom_density(data = x %>%
+                   group_by(x$species) %>%
+                   filter(n() > 1) %>%
+                   ungroup(),
+                 mapping = aes(x = .data$trait, ggplot2::after_stat(count), fill = factor(.data$species)),
+                 position = "stack", show.legend = F, na.rm = F) +
+    ggplot2::geom_point(
+      data = x %>%
+        group_by(.data$species) %>%
+        filter(n() == 1) %>%
+        ungroup(),
+      mapping = aes(x = .data$trait, y = -1, color = factor(.data$species)),
+      show.legend = F
+    ) +
+    ggplot2::xlab("Trait value") + ggplot2::ylab("Individuals") +
+    ggplot2::labs(title = paste0(S, " species, ", n, " individuals"))
+
 }

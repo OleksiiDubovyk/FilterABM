@@ -173,6 +173,7 @@ summary.FilterABM_lh <- function(object, ...){
 #' @exportS3Method base::plot
 #'
 plot.FilterABM_lh <- function(x, y, ...){
+  graphics.off()
   env_min <- min(x$env)
   env_max <- max(x$env)
   colfunc <- grDevices::colorRamp(c("lightgreen", "#003a00"))
@@ -180,6 +181,7 @@ plot.FilterABM_lh <- function(x, y, ...){
 
   layout(matrix(c(1, 1, 2, 2), 2, 2, byrow = TRUE),
          widths = c(1, 1), heights = c(4, 1))
+
   par(mar = c(5, 4, 0.5, 0.5))
   plot(x = x$patch, y = x$env,
        pch = 16,
@@ -193,5 +195,4 @@ plot.FilterABM_lh <- function(x, y, ...){
     polygon(x = c(i - 0.5, i + 0.5, i + 0.5, i - 0.5), y = c(0, 0, 1, 1), col = env_cols[j], border = NA)
     i <- i + 1
   }
-  par(mfrow = c(1, 1))
 }

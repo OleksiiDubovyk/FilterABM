@@ -110,3 +110,12 @@ testthat::test_that("simulation runs", {
 
   testthat::expect_true(exists("lc"))
 })
+
+# mc = init_meta(env_mean_mc = 0, env_sd_mc = 1, cauchy = 1, trait_sds = 0.5)
+# plot(mc)
+# lh = init_envt(env_mean_lh = -2, env_sd_lh = 0.1, npatch = 100, gradient = "random")
+# plot(lh)
+# lc = draw_lcom(mc = mc, lh = lh, nind = 10000)
+# plot(lc)
+# runsim <- run_sim(mc = mc, lh = lh, lc = lc, nsteps = 1000, progress_bar = T, recruitment = 0.05, dispersal = 10, res_input = 1, age_crit = 10, mass_crit = 2)
+# plot_run_sim(runsim)

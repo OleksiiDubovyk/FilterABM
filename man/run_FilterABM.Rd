@@ -77,9 +77,9 @@ run_FilterABM(
 
 \item{R}{Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.}
 
-\item{clustering}{Numeric, effect of niche clustering on probability of competition. Default to one. Feeds into \code{forage()}.}
+\item{clustering}{Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one. Feeds into \code{forage()}.}
 
-\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment. Default to one. Feeds into \code{forage()}.}
+\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one. Feeds into \code{forage()}.}
 }
 \value{
 A list.
@@ -87,4 +87,6 @@ A list.
 \description{
 A slightly overparametrized function.
 The objective is to make a model run extremely user-friendly, so that only the simulation parameters are supplied, and all objects needed for the simulation are evaluated internally.
+
+Usage is not recommended, please use \code{run_sim()} instead.
 }
