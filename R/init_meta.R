@@ -5,6 +5,15 @@
 #' and columns representing species identifier, mean trait value across individuals within the species, and abundance of the species.
 #' Intraspecific trait variation is set manually and passed to the output as a function parameter.
 #'
+#' The regional pool (in this context, the terms "metacommunity" and "regional pool" are used interchangeably) is initialized with the following steps:
+#'
+#' (1) species-specific mean trait values are drawn from a normal distribution with a mean \code{env_mean_mc} and variance \code{env_sd_mc};
+#'
+#' (2) the relationship between species' trait value and abundance is mapped through a Cauchy function following Koffel et al. 2022, where the function has the location parameter equal to zero and
+#' the shape parameter equal to the set value of \code{cauchy};
+#'
+#' (3) generated species-abundance distribution is rounded and standardized by \code{max_abun} so that the generated species-abundance distribution does not exceed the maximum set abundance.
+#'
 #' @param M Integer, species richness within metacommunity, positive integer.
 #' @param env_mean_mc Numeric, mean environmental factor value within the extent of a metacommunity.
 #' @param env_sd_mc Non-negative numeric, variation of environmental factor value within the extent of a metacommunity.
@@ -20,6 +29,8 @@
 #' @importFrom stats dcauchy
 #'
 #' @export
+#'
+#' @references Koffel, T., K. Umemura, E. Litchman, and C. A. Klausmeier. 2022. A general framework for species‐abundance distributions: linking traits and dispersal to explain commonness and rarity. Ecology Letters 25:2359–2371.
 #'
 #' @examples
 #' x = init_meta()
