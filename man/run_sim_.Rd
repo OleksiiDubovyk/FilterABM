@@ -43,12 +43,15 @@ run_sim_(
 
 \item{R}{Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.}
 
-\item{clustering}{Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one. Feeds into \code{forage()}.}
+\item{clustering}{Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
+If zero, local environmental conditions do not affect individual resource intake. Feeds into \code{forage()}.}
 
-\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one. Feeds into \code{forage()}.}
+\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
+If zero, trait differences among individuals do not affect resource intake. Feeds into \code{forage()}.}
 }
 \value{
-A quasi-"FilterABM_lc" local community object with an additional column for time step.
+A list with a quasi-"FilterABM_lc" local community object that has an additional column for time step ([["lcs"]]).
+Additionally, habitat history at each time step ([["habitat"]]), and the total resource consumed per time step ([["consumed_resource"]]).
 }
 \description{
 Requires an input of pre-defined metacommunity, local habitat, and local community objects, the two latter of which are iteratively modified to reflect changes caused by environmental filtering.

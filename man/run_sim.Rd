@@ -43,9 +43,11 @@ run_sim(
 
 \item{R}{Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.}
 
-\item{clustering}{Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one. Feeds into \code{forage()}.}
+\item{clustering}{Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
+If zero, local environmental conditions do not affect individual resource intake.}
 
-\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one. Feeds into \code{forage()}.}
+\item{dispersion}{Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
+If zero, trait differences among individuals do not affect resource intake.}
 }
 \value{
 A list of simulation parameters recorded at each step:

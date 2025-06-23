@@ -36,8 +36,10 @@ rkde <- function(kde, n = 1) {
 #' @param res_input Numeric, increment of the resource level within a time step. Feeds into \code{lh_input_res()}.
 #' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.
 #'
-#' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one. Feeds into \code{forage()}.
-#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one. Feeds into \code{forage()}.
+#' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
+#' If zero, local environmental conditions do not affect individual resource intake.
+#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
+#' If zero, trait differences among individuals do not affect resource intake.
 #'
 #' @returns A list of simulation parameters recorded at each step:
 #' distribution of resource across habitat patches ([[habitat]]),
@@ -246,10 +248,13 @@ plot_run_sim <- function(runsim){
 #' @param res_input Numeric, increment of the resource level within a time step. Feeds into \code{lh_input_res()}.
 #' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.
 #'
-#' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one. Feeds into \code{forage()}.
-#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one. Feeds into \code{forage()}.
+#' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
+#' If zero, local environmental conditions do not affect individual resource intake. Feeds into \code{forage()}.
+#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
+#' If zero, trait differences among individuals do not affect resource intake. Feeds into \code{forage()}.
 #'
-#' @returns A quasi-"FilterABM_lc" local community object with an additional column for time step.
+#' @returns A list with a quasi-"FilterABM_lc" local community object that has an additional column for time step ([["lcs"]]).
+#' Additionally, habitat history at each time step ([["habitat"]]), and the total resource consumed per time step ([["consumed_resource"]]).
 #'
 #' @import progress
 #'
@@ -340,4 +345,21 @@ run_sim_ <- function(mc, lh, lc,
     )
   )
 
+}
+
+#' Plot a simulation output (for long output)
+#'
+#' @param runsim An output of \code{run_sim_()}.
+#'
+#' @returns A plot of simulation parameters with time steps.
+#'
+#' @import ggplot2
+#' @export
+#'
+plot_run_sim_ <- function(runsim){
+  runsim$lcs %>%
+    ggplot(aes(x = .data$timestep, y = .data$trait)) +
+    ggplot2::geom_bin_2d() +
+    ggplot2::scale_fill_gradientn(colours = terrain.colors(10)) +
+    ggplot2::xlab("Time step") + ggplot2::ylab("Trait") + ggplot2::theme(legend.position="none")
 }

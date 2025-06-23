@@ -34,8 +34,10 @@ lh_input_res <- function(lh, res_input = 0){
 #' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one).
 #'
 #' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
+#' If zero, local environmental conditions do not affect individual resource intake.
 #'
 #' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
+#' If zero, trait differences among individuals do not affect resource intake.
 #'
 #' @returns A named list with:
 #' \code{[["lc"]]} - A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc});
