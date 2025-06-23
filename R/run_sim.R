@@ -357,9 +357,9 @@ run_sim_ <- function(mc, lh, lc,
 #' @export
 #'
 plot_run_sim_ <- function(runsim){
-  runsim$lcs %>%
-    ggplot(aes(x = .data$timestep, y = .data$trait)) +
-    ggplot2::geom_bin_2d() +
+  ggplot2::ggplot() +
+    ggplot2::geom_bin_2d(aes(x = .data$timestep, y = .data$trait), data = runsim$lcs) +
     ggplot2::scale_fill_gradientn(colours = terrain.colors(10)) +
+    ggplot2::geom_line(aes(x = .data$timestep, y = .data$trait), data = runsim$lcs %>% group_by(.data$timestep) %>% summarise(trait = mean(.data$trait))) +
     ggplot2::xlab("Time step") + ggplot2::ylab("Trait") + ggplot2::theme(legend.position="none")
 }
