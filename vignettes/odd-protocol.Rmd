@@ -1,0 +1,541 @@
+---
+title: "Model description following the overview-design-details (ODD) protocol"
+output: 
+  bookdown::html_document2:
+    base_format: rmarkdown::html_vignette
+    number_sections: true
+always_allow_html: true
+vignette: >
+  %\VignetteIndexEntry{odd-protocol}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+options(rmarkdown.html_vignette.check_title = FALSE)
+```
+
+```{r setup}
+# package-specific
+library(dplyr)
+library(tibble)
+library(magrittr)
+library(grDevices)
+library(graphics)
+library(stats)
+library(progress)
+library(ggplot2)
+
+# vignette-specific
+library(forcats)
+library(bookdown)
+library(knitr)
+library(kableExtra)
+
+# install the package
+
+# intall.packages("devtools")
+# devtools::install_github("OleksiiDubovyk/FilterABM")
+library(FilterABM)
+```
+
+<font size="1">The ODD protocol follows recommendations of Grimm et al. ([2020](https://doi.org/10.18564/jasss.4259))</font> 
+
+# Purpose and patterns
+
+This model is intended to illustrate how the interaction of environmental factors and organismal functional traits interact predicting the composition of a local ecological community. 
+Individual trait values determine whether an individual recruited from a regional pool into the local community consumes habitat resources effectively: an individual is more likely to consume the resource if its trait value matches the local environmental factor (niche clustering) and if there are few individuals present in the habitat that share a similar trait value (niche dispersion). 
+If there is a considerable mismatch between the individual trait value and the local conditions, the individual is unlikely to be able to consume the resource (e.g., it is too cold to forage); likewise, individuals with similar trait values compete for the resource, reducing the likelihood of successful foraging. 
+All individuals must consume the resource to gain enough weight to reproduce before they die of old age.
+
+# Entities, state variables, and scales
+
+All notations used across the model and the state variables are listed in Table \@ref(tab:table1). 
+The agents in the model are characterized by their species identity, individual trait value, age, body mass, body mass at reproduction, and maximum lifespan.
+
+```{r tab1, echo=FALSE, eval=TRUE}
+tab1 <- tibble(
+  entity = c(
+    rep("Index", 3),
+    rep("Regional pool", 8),
+    rep("Local habitat", 7),
+    rep("Individual", 7),
+    rep("Global simulation parameters", 7)
+  ) %>%
+    as.factor(),
+  Notation = c(
+    "$s$", "$h$", "$i$",
+    "$M$", "$N_s$", "$\\max[N_s]$", "$\\mu$", "$\\sigma^2$", "$\\gamma$", "$\\bar{t_{i, s}}$", "$Var[t_{i, s}]$",
+    "$H$", "$\\bar{\\epsilon_h}$", "$Var[\\epsilon_h]$", "$K$", "$Cor(h, \\epsilon_h)$", "$r_h$", "$\\epsilon_h$",
+    "$s_i$", "$t_i$", "$h_i$", "$\\theta$", "$\\omega$", "$\\hat{\\theta}$", "$\\hat{\\omega}$",
+    "$\\lambda_M$", "$\\lambda_D$", "$\\hat{\\theta}^*$", "$\\hat{\\omega}^*$", "$\\Delta r$", "$R$", "$N_{init}$"
+  ), 
+  Description = c(
+    "species", "habitat patch", "individual",
+    
+    "species richness in the regional pool", 
+    "regional abundance of a species $s$",
+    "regional abundance of the most abundant species",
+    "regional mean of the environmental factor", 
+    "regional variation of the environmental factor",
+    "shape of the Cauchy function mapping species abundance distribution through trait abundance distribution",
+    "species-specific mean trait",
+    "intraspecific trait variation",
+    
+    "number of habitat patches within the habitat",
+    "mean environmental factor value across patches",
+    "variation of the environmental factor value across patches",
+    "if gradient is clustered, number of clusters", 
+    "if gradient is correlated, correlation between the patch location and the environmental factor",
+    "resource available within the patch $h$",
+    "environmental factor at the patch $h$",
+    
+    "species to which the individual belongs",
+    "individual trait value",
+    "patch identifier in which the individual resides",
+    "current age", "current body mass",
+    "critical age (maximum lifespan)", "critical body mass at which individual reproduces",
+    
+    "mean rate of recruitment of new individuals from the regional pool into the local community, per patch",
+    "mean rate of individuals moving to a neighboring habitat patch, per patch",
+    "age at which half of the individuals die",
+    "body mass at which half of the individuals reproduce",
+    "resource regeneration rate, per patch",
+    "resource level at which all individuals consume resource",
+    "number of individuals drawn from the regional pool at initialization"
+  ),
+  `Default value` = c(
+    "–", "–", "–",
+    "$450$", "–", "$10^6$", "$0$", "$10$", "$5.62$", "–", "$1$",
+    "$100$", "$5$", "$1$", "$3$", "$0.75$", "–", "–",
+    "–", "–", "–", "–", "–", "–", "–",
+    "$[0, \\infty]$", "$[0, \\infty]$", "$[0, \\infty]$", "$[0, \\infty]$", "$10$", "$10^3$", "$10^4$"
+  ),
+  `Is state variable?` = c(
+    rep("–", 16), "Y", rep("–", 3), "Y", "Y", "Y", rep("–", 9)
+  )
+)
+
+t1 <- knitr::kable(tab1[-1], escape = F, 
+                   caption = "List of used symbols in the model description and their default values", 
+                   label = "table1",
+                   booktabs = TRUE, format = "html", align = "clc")
+t1 <- t1 %>%  
+  kableExtra::group_rows(index = table(fct_inorder(tab1$entity)), bold = T)
+```
+
+
+```{r table1, echo=FALSE, message=FALSE, warnings=FALSE, results='asis'}
+t1
+```
+
+The model consists of three major components: (1) regional pool, (2) local habitat, and (3) local community (Table \@ref(tab:table2)). 
+The regional pool is immutable and contains the information about the finite and exhaustive set of $M$ species in the model, their regional abundances, and intraspecific trait mean and variation. 
+Species abundances in the regional pool are presumed to be so large in comparison with the local community that they are not affected by the local community and remain constant throughout the simulation. 
+Trait means across species in the regional pool follow a Gaussian distribution with some mean $\mu$ and variation $\sigma^2$; trait means are mapped into species abundances through a Cauchy function with the shape parameter $\gamma$.
+
+The simulation runs are constrained within a local community into which individuals are recruited from the regional pool.
+This local community exists within a local habitat. 
+The local habitat is modeled as a set of $H$ discrete habitat patches indexed as ${1, 2, \cdots, h, \cdots, H}$. 
+Every habitat patch $h$ has its resource level ($r_h$) independent of other habitat patches, which is renewable at a constant rate $\Delta r$ (equal for all habitat patches). 
+Habitat patches of the local habitat are organized into a unidimensional sequence. 
+The entire local habitat has some mean value of an environmental factor across patches ($\bar{\epsilon_h}$) and the respective variation ($Var[\epsilon_h]$). 
+Four possible scenarios of spatial distribution of the environmental factor across habitat patches can be simulated (see [Initialization 5.2](#spatial) for details): (1) random, (2) clustered, (3) correlated, or (4) linear.
+
+The local community is a set of live individuals inhabiting the local habitat. New individuals are either recruited from the metacommunity or are “born” through asexual reproduction of previous generations of individuals. 
+The rate of recruitment $\lambda_M$ of new individuals from the regional pool is constant throughout the simulation; the trait value of each newly recruited individual is drawn from a normal distribution with species-specific parameters recorded in the regional pool (see [Submodel 7.4](#newtraits)). 
+When a new individual appears in the local community (either through recruitment from the regional pool or reproduction of older individuals), it is assigned a random value of its body mass at reproduction and its maximum lifespan. 
+For both of these values, the expected values of their distributions (critical body mass $\hat{\omega} ^*$ and critical maximum lifespan $\hat{\theta} ^*$) are constant for all individuals throughout simulation (see Submodels [7.2](#reproduction)--[7.3](#mortality) for details).
+The trait value of a “newborn” individual is drawn from a normal distribution with a mean equal to the trait of the parent individual and variance species-specific parameters recorded in the regional pool (see [Submodels 7.4](#newtraits)); this mechanism imitates heredity of traits across lineages. 
+There is no limit to how many individuals can exist in the local community. 
+Individuals are also allowed to disperse between patches at a set rate $\lambda_D$.
+
+Overall, there are following state variables (i.e., those that are updated every time step) in the model (Table \@ref(tab:table1)): habitat patches have their specific resource levels, while individuals are described by age and body weight, as well as their current habitat patch identifier. 
+Individual traits are not state variables as they are assumed to be constant throughout the individual's lifetime.
+
+```{r table2, echo=FALSE, message=FALSE, warnings=FALSE, results='asis'}
+tab2 <- tibble(
+  entity = c(
+    rep("Regional pool $[M \\times 4]$", 4),
+    rep("Local habitat $[H \\times 3]$", 3),
+    rep("Local community $[(\\text{# live individuals}) \\times 7]$", 7)
+  ),
+  Notation = c(
+    "$s$", "$\\bar{t_{i,s}}$", "$Var[t_{i,s}]$", "$N_s$",
+    "$h$", "$\\epsilon_h$", "$r_h$",
+    "$s_i$", "$t_i$", "$\\theta_i$", "$\\omega_i$",
+    "$\\hat{\\theta_i}$", "$\\hat{\\omega_i}$", "$h_i$"
+  ),
+  `Code notation` = c(
+    "`species`", "`trait`", "`trait_sd`", "`abundance`",
+    "`patch`", "`env`", "`res`",
+    "`species`", "`trait`", "`age`", "`mass`", "`lifespan`", "`repmass`", "`patch`"
+  ),
+  Description = c(
+    "species identifier", "regional species-specific mean trait value", 
+    "regional intraspecific trait variation", "species regional abundance",
+    "patch identifier", "environmental factor value in patch $h$", 
+    "resource available in patch $h$",
+    "individual species identifier", "individual trait value", 
+    "current age of the individual", "current individual body mass", 
+    "maximum lifespan of the individual", "body mass at which the individual will reproduce",
+    "patch identifier in which the individual resides"
+  )
+)
+
+t2 <- knitr::kable(tab2[-1], escape = F, 
+                   caption = "Variables stored in the simulation objects", 
+                   label = "table2",
+                   booktabs = TRUE, format = "html", align = "ccl")
+t2 <- t2 %>%  
+  kableExtra::group_rows(index = table(fct_inorder(tab2$entity)), bold = T)
+
+t2
+```
+
+For simplicity, the space is represented as a unidimensional row of habitat patches. 
+The sequence of the patches is not toroidal so edge effects are possible. 
+The spatial scale of the simulation is not bound to any particular biological system, but a single habitat patch in the model roughly represents a habitat patch in a landscape, which, depending on a focal system, may vary in size. 
+Likewise, the scale of a discrete time step is not explicitly set, but a single time step in the model represents the amount of time sufficient for an organism to feed and choose to reproduce, thus, one time step roughly represents a generation in a focal system.
+
+# Process overview and scheduling
+
+The simulation starts with initializing the regional pool for the provided global parameters of regional species richness $S$, regional trait mean $\mu$ and variation $\sigma^2$ across species, and the shape parameter $\gamma$ for the Cauchy function that relates species abundances to their mean trait values. 
+
+The local habitat is initialized using the provided global parameters for the number of habitat patches $H$, mean local environmental factor $\bar{\epsilon_h}$ and its variation ($Var[\epsilon_h]$), and the set spatial configuration. 
+A set of random $n_init$ individuals are drawn from the regional pool into the local community, randomly distributed across local habitat patches to form the initial composition of the local community.
+
+The time step begins recruitment of new individuals from the regional pool into the local community. 
+After that, all individuals advance their age by one time step, and the demographic processes take place: elimination of all individuals whose age exceeded their maximum lifespan and reproduction of all individuals whose body mass exceeded their reproductive body mass. 
+After that, a random subset of individuals disperse to neighboring habitat patches. 
+After the patch-to-patch dispersal, in all habitat patches, all individuals take turns in a random order attempting to consume a patch's resource, which simultaneously updates the amount of resource available within the patch. 
+After all individuals attempt feeding, the resource level at the habitat patch is replenished by the globally set fixed value, $\Delta r$.
+The time step then completes as updated state variables of the individuals (i.e., body weight, age) and habitat patches (i.e., resource level) are recorded in model output.
+
+The model assumes discrete time steps. 
+The submodels for each substep of a time step are provided in the [submodels section](#submodels).
+
+```{r fig1, echo=FALSE, message=FALSE, warnings=FALSE, results='asis', out.width="100%", fig.cap="Outline of the operations performed on individuals scheduled within a time step. $\\lambda_M$ denotes the expected rate of recruitment per habitat patch per time step; $N_s$ --- species abundance within the regional pool; $t_{i,s} \\equiv t_s$ --- regional species-specific trait mean,; $Var[t_{i, s}] \\equiv Var[t_s]$ --- regional intraspecific trait variation; $h$ --- habitat patch index; $H$ --- number of habitat patches in the local habitat; $\\theta \\equiv \\theta_i$ --- indiviual current age; $\\hat{\\theta} \\equiv \\hat{\\theta}_i$ --- individual maximum lifespan; $\\omega \\equiv \\omega_i$ --- individual current body mass; $\\hat{\\omega} \\equiv \\hat{\\omega}_i$ --- individual body mass at reproduction; $r_h$ --- current avalable resource level within patch $h$; $\\epsilon_h$ --- environmental factor value within patch $h$ (so that $t_i | \\epsilon_h$ denotes individual trait given environmental conditions, $t_i | t_{j \\neq i}$ --- individual trait given traits of all other individuals present); $\\delta r$ --- amount of resource consumed by an individual."}
+knitr::include_graphics("fig1.png")
+```
+
+
+# Design concepts
+
+## Basic principles
+
+Organismal traits determine species dispersal, abiotic, and biotic interactions, fitness to the local conditions, and, ultimately, may determine whether a species establishes a viable population.
+At community level, traits thus can determine the composition of the entire communities and their diversity levels. If 
+particular trait values are favored by the local conditions, one might expect that the trait values exhibited across the community will converge to the expected value. 
+However, due to limiting similarity, coexistence of two species with similar trait values is unlikely. 
+Thus, the model introduces the effects of trait-based competition: individual fitness, expressed through ability to consume the resource and grow, decreases with presence of individuals with a similar trait value. 
+Therefore, the trait composition of a local community represents a balance between trait clustering driven by the abiotic environment and trait dispersion driven by biotic interactions, which, in turn, determines the taxonomic composition and diversity of that community.
+
+## Emergence
+
+The key result of the simulation is the complete information on the composition of the local communities that persist within the environment with some abiotic condition: this includes the data on persisting individuals, their trait values, body mass distribution, abundance, as well as the total taxonomic and functional diversity of the entire community. 
+The trait composition of the community is a function of trait clustering, dispersion, as well as intraspecific trait variation and heredity, rates of recruitment from the regional pool and patch-to-patch dispersal, composition of the regional pool itself. 
+The model is connecting the interaction between the environmental gradient and organismal traits to the resulting community composition.
+	
+## Adaptation
+
+Individuals do not make explicit decisions in the model except for the relationship between their ability to consume the resource and their trait value, resource availability, local environmental conditions, and trait values of all the individuals in the same habitat patch. 
+An individual's decision to reproduce is determined purely by their current body mass. 
+Individuals do not decide to disperse to a neighboring patch as this dispersal is modeled as random.
+
+## Objectives
+
+The main objective of each individual is to consume as much of the resource as possible to be able to reproduce before its age exceeds its maximum lifespan.
+
+## Learning
+
+Learning is not implemented in this model.
+
+## Prediction
+
+There is no explicit or implicit prediction in individual adaptive behavior.
+
+## Sensing
+
+It is assumed that each individual has complete information about its own trait value, trait values of all other individuals within the patch, the available resource, and environmental factor level.
+
+## Interaction
+
+All interactions between the individuals are mediated: individuals do not affect other individuals directly (i.e., there is no predation), but the ability of an individual to consume the resource is affected by the trait values of all individuals present in the habitat patch.
+
+## Stochasticity
+
+Both maximum lifespan of each new individual and the body mass at which they reproduce are random variables and the global simulation parameters only specify the expectation of those variables. 
+Similarly, the amount of individuals recruited from the regional pool and dispersed to a neighboring patch at each time step is variable and is governed by the global simulation parameters.
+
+Resource consumption is modeled as a partially stochastic process. 
+Within each habitat patch, individuals take turns attempting to consume the resource in a random order. 
+While the amount of resource consumed is proportional to the current individual body mass, whether the individual consumes the resource is stochastic. 
+Probability of consuming the resource depends on the resource availability, favorability of the patch’s environmental factor for the individual trait, and similarity of the individual trait value to the trait values of individuals that occupy the patch.
+
+## Collective
+
+There are no collectives simulated in the model. 
+
+## Observation
+
+At each time step, the model writes out the description of each habitat patch in terms of the level of resource available: mainly, this data is retained since the amount of resource at each time step depends on the previous time steps, but it also allows the user to calculate the overall resource consumption by the community across time to see at which time step it becomes stable. 
+It should be noted that the test runs showed some instability in species richness and individuals abundance even once the overall resource consumption equalizes with the resource input, so the user should allow for longer simulation runs.
+
+All descriptors of each individual are recorded at each time step. 
+Having the data on species identifiers of individuals allows the user to assess the total species richness and species abundance distribution from the output, and the recorded data on individual trait values gives an insight into the trait distributions across time steps and habitat patches.
+
+# Initialization
+
+Initialization is not case-specific and the simulations are not spatially explicit. 
+There are three steps to prime the model before the simulation run: (1) initialize the regional pool, (2) initialize the local habitat, and (3) sample the regional pool to shape the initial local community. All these steps may be replaced by supplying the input data instead of generating the data.
+
+## Regional pool
+
+Regional pool is initialized using the `FilterABM::init_meta()` function, e.g.,
+
+```{r}
+regpool <- init_meta(
+  M = 450, 
+  env_mean_mc = 0, env_sd_mc = 10, 
+  cauchy = 10^(log10(10) - 0.25), 
+  trait_sds = 0.5, 
+  max_abun = 1e6
+)
+```
+
+At this step, species-specific trait means are generated as a random variable with `M` values following a normal distribution with the provided mean (`env_mean_mc`, $\mu$) and variation (`env_sd_mc`, $\sigma^2$): $t_s \sim \mathcal{N}(\mu, \sigma^2)$. 
+Since the model assumes that the abstract environmental factor and the abstract trait have the same units and scale, $\mu$ can be thought of as the mean and $\sigma^2$ -- as the variation of the regional environmental factor to which the regional pool of $M$ species is adapted.
+
+To generate species-specific regional abundances, mean trait values are mapped through the Cauchy function with the shape parameter $\gamma$ specified as `cauchy` argument (equal to $10^{\lg(\sigma^2) - 0.25} \approx 5.62$ in the example above) to yield common logarithms of expected abundances:
+
+$$\lg(\hat{N_s}) = \frac{1}{\pi} \left( \frac{\gamma}{t_s^2 + \gamma^2} \right)$$
+
+These values are then max-standardized by the provided maximum species abundance (`max_abun`, $\max[N_s]$) as $\lg(N_s) = \lg(\hat{N_s}) \cdot \frac{\lg(\max[N_s])}{\lg(\max[\hat{N_s}])}$ and then the abundances are rescaled from log-scale to linear scale. 
+The output of this step yields a regional list of species, their mean trait values, and abundances, accompanied by the supplied regional intraspecific trait variation (`trait_sds`).
+
+## Local habitat {#spatial}
+
+The local habitat is initialized using the `FilterABM::init_envt()` function, e.g.,
+
+```{r}
+lh <- init_envt(
+  env_mean_lh = 5, env_sd_lh = 1, 
+  npatch = 100, 
+  gradient = "correlated", rho = 0.75
+)
+```
+
+Local habitat consists of $H$ habitat patches, where $H$ is defined by the `npatch` argument. 
+Every patch has some environmental factor level, $\epsilon_h$, and its arrangement along habitat patches $1, 2, 3, \cdots, h, \cdots, H$ is specified at this step. 
+Values of the environmental factor across patches are simulated as such that have a set mean (`env_mean_lh`, $\bar{\epsilon_h}$) and variation (`env_sd_lh`, $Var[\epsilon_h]$).
+There are four possible spatial configurations:
+
+- **random**, where patch-specific environmental factor is modeled as a independent random variable with a normal distribution, $\epsilon_h \sim \mathcal{N}(\bar{\epsilon_h}, Var[\epsilon_h])$;
+
+- **linear**, where there is a linear relationship between the patch index, $h$, and its environmental factor, $\epsilon_h$; in practice, this effect is reached by generating a sequence of $\epsilon_h$ spaced by a fixed interval such that the generated values are between the 2.75th and 97.5th percentile of a random variable with a distribution modeled as $x \sim \mathcal{N}(\bar{\epsilon_h}, Var[\epsilon_h])$;
+
+- **clustered**, in which the values of $\epsilon_h$ are divided into $K$ clusters; for each cluster $k$, within-cluster variation is set to $0.1 \cdot Var[\epsilon_h]$ and means -- to an equally spaced sequence of values $\bar{\epsilon_{h \in k}}$ between the 2.75th and 97.5th percentile of a random variable with a distribution modeled as $x \sim \mathcal{N}(\bar{\epsilon_h}, Var[\epsilon_h])$; within each cluster, environmental factor values are then generated as a normally distributed random variable, $\epsilon_{h \in k} \sim \mathcal{N}(\bar{\epsilon_{h \in k}}, 0.1 \cdot Var[\epsilon_h])$;
+
+- **correlated**, where environmental factor is generated as a normally distributed variable with a mean $\bar{\epsilon_h}$ and variation $Var[\epsilon_h]$, and is correlated with the habitat patch with the set coefficient $Cor(h, \epsilon_h)$.
+
+The examples of different spatial configurations of the environmental factor are provided below.
+
+```{r fig.width=7, fig.height=5, out.width="100%", dpi=300, fig.cap="Examples of potential configurations of the environmental factor across habitat patches in the local habitat. The red dotted line represents the local habitat mean environmental factor."}
+lh_types <- bind_rows(
+  init_envt(
+    env_mean_lh = 5, env_sd_lh = 1, 
+    npatch = 100, 
+    gradient = "random",
+  ) %>% mutate(`Spatial configuration` = "random"),
+  init_envt(
+    env_mean_lh = 5, env_sd_lh = 1, 
+    npatch = 100, 
+    gradient = "linear", rho = 0.75
+  ) %>% mutate(`Spatial configuration` = "linear"),
+  init_envt(
+    env_mean_lh = 5, env_sd_lh = 1, 
+    npatch = 100, 
+    gradient = "clustered", K = 3
+  ) %>% mutate(`Spatial configuration` = "clustered"),
+  init_envt(
+    env_mean_lh = 5, env_sd_lh = 1, 
+    npatch = 100, 
+    gradient = "correlated", rho = 0.75
+  ) %>% mutate(`Spatial configuration` = "correlated")
+) 
+
+lh_types %>%
+  ggplot(aes(x = patch, y = env, color = env)) +
+  geom_point() + 
+  geom_hline(yintercept = 5, color = "red", lty = 2) +
+  facet_grid(cols = vars(`Spatial configuration`)) +
+  xlab("Patch identifier, h") + 
+  ylab(expression(paste("Environmental factor, ", epsilon[h]))) +
+  theme(legend.position = "null")
+```
+
+However, given that the local habitat is arranged in a unidimensional array, the following representation would be more appropriate:
+
+```{r fig.width=7, fig.height=2, out.width="100%", dpi=300, fig.cap="Examples of unidimensional potential configurations of the environmental factor across habitat patches in the local habitat."}
+lh_types %>%
+  ggplot() +
+  geom_vline(aes(xintercept = patch, color = env)) + 
+  facet_grid(cols = vars(`Spatial configuration`)) +
+  xlab("Patch identifier, h") + 
+  labs(color = "Environmental\nfactor") +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+## Local community
+
+Initialization of the local community is principally not different from the recruitment from the regional pool (Submodels [7.4](#recruitment)).
+Individuals are recruited from the regional pool into the local habitat to form a local community. 
+The exact number of individuals to be recruited is set as a global variable ($N_{init}$).
+Regional abundance of species is proportional to the number of newly recruited individuals belonging to this species.
+For each newly recruited individual, its individual trait value $t_i$ is generated as a single random value from a normal distribution such that $\mathcal{N}(\bar{t_s}, Var[t_s])$.
+Likewise, each individual is assigned to a random habitat patch drawn from a uniform distribution $\mathcal{U}(1, 2, \cdots, h, \cdots, H)$.
+
+```{r}
+lc = draw_lcom(
+  mc = regpool, 
+  lh = lh, 
+  nind = 10000
+)
+```
+
+# Input data
+
+The model does not use any input data to represent time-varying processes.
+
+# Submodels {#submodels}
+
+## Reproduction {#reproduction}
+
+Every individual that exists in the model is assigned a value of critical body mass at reproduction, $\hat{\omega_i}$.
+This value to each individual when it is recruited from the regional pool (or drawn into a newly initialized local community), or when the new individuals are born through reproduction.
+Body mass at reproduction is controlled by $\hat{\omega}^*$, the global parameter of critical body mass.
+This parameter is the same for each species and just means that half of all individuals in the simulation will have their body mas at reproduction equal or less than $\hat{\omega}^*$.
+For each individual, their exact body mass at reproduction is generated as a logit function of a uniform continuous random variable $p$:
+
+$$\hat{\omega_i} = \frac{p \cdot \hat{\omega}^*}{1 - p}, p \sim \mathcal{U}(0.1, 0.9)$$
+
+Reproduction happens once the current body mass of an individual, $\omega_i$, exceeds its body mass at reproduction.
+Once that happens, the parent individual ($i$) is replaced with two daughter individuals (we denote them as $i'$ and $i''$ here) with the following features:
+
+- **species identifier** is identical to the parent individual, $s_{i'} = s_{i''} = s_i$;
+
+- **trait** is inherited from the parent individual accounting for the intraspecific trait variation, $(t_{i'}, t_{i''}) = t_i + \varepsilon$ where $\varepsilon \sim \mathcal{N}(0, Var[t_{s: i \in s}])$;
+
+- **age** is set to one;
+
+- **mass** is set to one;
+
+- **maximum lifespan of the individual** is initialized as two random maximum lifespan values governed by $\hat{\theta}^*$ (see [below](#mortality));
+
+- **body mass at which the individual will reproduce** is initialized in the same way as outlined above, as two random values governed by $\hat{\omega}^*$;
+
+-	**patch identifier in which the individual resides** is identical to the parent individual, $h_{i'} = h_{i''} = h_i$.
+
+The parent individual is eliminated from the simulation after it reproduces.
+
+## Mortality {#mortality}
+
+Similar to the critical body mass at reproduction, each individual in the simulation is assigned its maximum lifespan, $\hat{\theta_i}$ whenever it is born or is recruited from the regional pool into local community.
+The distribution of $\hat{\theta_i}$ is identical across species, and each new value is drawn from an exponential distribution:
+
+$$\hat{\theta_i} \sim \mathcal{Exp}(\hat{\theta}^*)$$
+
+where $\hat{\theta}^*$ is a global parameter controlling the lifespan at which half of all individuals in the population will be eliminated.
+Once the current age of an individual, $\theta_i$, exceeds its maximum lifespan $\hat{\theta_i}$, this individual is deleted from the simulation, which simulates mortality.
+The resource consumed by the individual in their lifetime is not returned into the resource pool of a habitat patch. <!-- Could be improved -->
+
+## Individual trait assignment {#newtraits}
+
+There are two ways new individuals can appear in the simulation: (1) getting recruited from the regional pool into the local community, either at local community initialization or as a substep of every time step, or (2) as a result of reproduction of a parent individual that reached its critical body mass at reproduction. 
+Every new individual is assigned a new trait value, and this value does not change throughout the individual's lifespan. 
+The mechanism of a new trait assignment is different depending on how the new individual is generated:
+
+- if the new individual ($i$) is recruited from the regional pool, its trait value is generated given *species-specific trait mean* ($\bar{t_s}$) and intraspecific variance ($Var[t_s]$) for the species individual belongs to ($s$):
+
+$$t_i \sim \mathcal{N}(\bar{t_s}, Var[t_s])$$
+
+- if the new individual is a daughter individual ($i'$) to a reproducing parent individual ($i$), then its trait value is generated given the *parent trait value* ($t_i$) and intraspecific variance ($Var[t_s]$) for the species individual belongs to:
+
+$$t_{i'} \sim \mathcal{N}(t_i, Var[t_s])$$
+
+## Recruitment from the regional pool {#recruitment}
+
+Recruitment rate is regulated by a global parameter $\lambda_M$, which is the expected number of individuals to be drawn per habitat patch per time step.
+The actual number of individuals that are drawn from the regional pool into the local habitat patch $h$ during a particular time step is defined as a random value from Poisson distribution, $n_M \sim \mathcal{Poisson}(\lambda_M)$.
+As the exact $n_M$ is defined, this number of individuals is drawn from the regional pool.
+The probability of a species $s$ to be drawn from the regional pool is proportional to its regional abundance, $N_s$.
+Individual traits are defined as outlined [above](#newtraits) --- as a random value following a normal distribution $\mathcal{N}(\bar{t_s}, Var[t_s])$ regulated by species-specific trait mean and variance.
+Age and body mass of all new individuals are set to one, and their maximum lifespan and body mass at reproduction are generated as outline [above](#reproduction).
+The habitat patch identifier is set to the value of $h$ for which the random draw was performed.
+
+## Patch-to-patch dispersal {#dispersal}
+
+Similarly to recruitment, dispersal rate is regulated by a global parameter $\lambda_D$, which is the expected number of individuals to disperse per habitat patch per time step.
+The exact number of individuals that disperse is modeled as a Poisson random value, $n_D \sim \mathcal{Poisson}(\lambda_D)$.
+Within each patch, random $n_D$ individuals are then selected for dispersal; if there are less than $n_D$ individuals present at the patch, then all individuals in this patch disperse.
+
+An individual can only disperse into one neighboring habitat patch per time step.
+If an individual resides within a habitat patch with index between $1$ and $H$, its habitat patch assignment changes by $\pm 1$ (i.e., it can either disperse from patch $h$ into patch $(h-1)$ or $(h+1)$ with a 50/50 chance).
+However, since the environment is not toroidal, if an individual resides at the "left-most" patch ($h=1$), it can only disperse into the only neighboring patch $h=2$.
+Likewise, individuals that reside at the "right-most" patch ($h=H$) can only disperse into patch number $(H-1)$.
+
+## Feeding {#feeding}
+
+Feeding is perhaps the most complicated step in this simulation, but it is the one responsible for simulating beyond basic demographic processes and movement in the habitat, and actually simulating environmental filtering.
+The purpose of the mechanisms outlined here is to force the simulation into the balance between (1) individuals trying to consume as much resource as possible to reproduce before mortality affects them, (2) environmental factor favoring individuals with particular trait values, and (3) competition with other individuals having similar trait values.
+All mechanisms outlined here operate at the level of a single habitat patch.
+Environmental factors and individuals present in neighboring habitat patches have no effect on the feeding.
+
+For simplicity, the scales and units of the abstract trait and environmental factor in the model are the same.
+Therefore, we assume that if individual trait $t_i$ matches the environmental factor in the patch that individual resides in, $\epsilon_h$, i.e., $t_i \rightarrow \epsilon_h$, then these environmental conditions favor the individual and it is likely to consume a large amount of resource.
+The larger the mismatch is between the individual trait and environmental factor, $|t_i - \epsilon_h|$, the less likely it is that the individual will feed and if it does, the amount of resource consumed will be smaller.
+With this mechanism it place, one should expect **niche clustering**, since all individuals favored by the environmental conditions should have similar trait values such that $(|t_i - \epsilon_h|) \rightarrow 0$.
+
+Niche clustering is counterbalanced with mechanisms responsible for **niche dispersion** that ensure that individuals with too similar trait values cannot coexist.
+Niche dispersion thus is favoring such individuals that have unique trait values in the context of all other individuals inhabiting the habitat patch.
+Therefore, individuals for which the mean distance between their trait value ($t_i$) and trait value of all other individuals ($t_{j \neq i}$), $\bar{(|t_i - t_{j \neq i}|)}$, is greater will have a higher likelihood of feeding.
+On the other hand, individuals with trait values similar to the other individuals in the patch (i.e., $\bar{(|t_i - t_{j \neq i}|)} \rightarrow 0$) are less likely to be successful in their feeding attempts.
+
+The feeding cycle within a patch begins with defining an order of individuals in which they attempt to feed.
+Individuals are bootstrapped every time step to ensure that there is no individual bias in resource consumption (i.e., one individual would be less likely to consume resource if another individual consumed some resource before it, thus reducing the total amount of resource available in the patch).
+
+For each individual, the following calculations are performed:
+
+- estimate resource availability $P_{resource}$ as a ratio of the current resource level within the patch ($r_h$) to some arbitrary level of resource at which *all* individuals are expected to feed ($R$): 
+
+$$
+P_{resource} = \begin{cases} 
+\frac{r_h}{R} \text{ if } R \geq r_h \\
+1 \text{ otherwise}
+\end{cases}
+$$
+
+- pressure of niche clustering is estimated as a logistic function of mismatch between the individual trait value $t_i$ and patch's environmental factor level $\epsilon_h$:
+
+$$P_{clustering} = 1 - \frac{1}{1 + \exp[-\ln(|t_i - \epsilon_h|)]}$$
+
+- pressure of niche dispersion is estimated as a logistic function of mean distance between the focal individual trait value ($t_i$) and trait values of all other individuals present in the patch ($t_{j \neq i}$):
+
+$$P_{dispersion} = \frac{1}{1 + \exp[-\ln(\bar{|t_i - t_{j \neq i}|})]}$$
+
+- the probability of individual feeding during its attempt is a probability of non-mutually-exclusive events of feeding given available resource and feeding given competition with other individuals, weighted by resource availability, which is calculated as
+
+$$P_{feed} = P_{resource} \cdot (P_{resource} + P_{dispersion} - P_{resource} \cdot P_{dispersion})$$
+
+- if the feeding occurs (i.e., a value from a random uniform variable drawn from $\mathcal{U}(0, 1)$ is less than or equal to $P_{feed}$), then the amount of resource consumed ($\delta r$) is proportional to the probability of feeding and individual's body weight (i.e., larger individuals consume more):
+
+$$\delta r = \omega_iP_{feed}$$
+
+- the individual's body mass is increased by the amount of resource consumed ($\delta r$), while the amount of resource available ($r_h$) is reduced by that amount before the next individual attempts to consume it.
