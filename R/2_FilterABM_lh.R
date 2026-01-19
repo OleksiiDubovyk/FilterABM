@@ -131,7 +131,7 @@ FilterABM_lh <- function(x, val_in = TRUE, val_out = TRUE, gradient = NULL){
     y <- bind_rows(y, x)
   }
 
-  y <- y %>% select(.data$patch, .data$env, .data$res)
+  y <- y %>% select(patch, env, res)
 
   y <- structure(y, class = c("FilterABM_lh", class(y)), gradient = gradient)
 
@@ -166,33 +166,31 @@ summary.FilterABM_lh <- function(object, ...){
 #' @param y Parameter two.
 #' @param ... Arguments passed to or from other methods.
 #'
-#' @import graphics
-#' @import grDevices
+#' @import ggplot2
+#' @importFrom gridExtra grid.arrange
 #' @importFrom stats density
 #'
 #' @exportS3Method base::plot
 #'
 plot.FilterABM_lh <- function(x, y, ...){
-  graphics.off()
-  env_min <- min(x$env)
-  env_max <- max(x$env)
-  colfunc <- grDevices::colorRamp(c("lightgreen", "#003a00"))
-  env_cols <- rgb(colfunc((x$env - env_min) / diff(range(x))), maxColorValue = 255)
 
-  layout(matrix(c(1, 1, 2, 2), 2, 2, byrow = TRUE),
-         widths = c(1, 1), heights = c(4, 1))
+  p1 <- x %>%
+    ggplot(aes(x = patch, y = env, color = env)) +
+    geom_point() +
+    scale_color_gradient(low = "lightgreen", high = "#003a00") +
+    theme_minimal() +
+    xlab("Patch") +
+    ylab("Environmental factor") +
+    theme(legend.position = "none")
 
-  par(mar = c(5, 4, 0.5, 0.5))
-  plot(x = x$patch, y = x$env,
-       pch = 16,
-       xlab = "Patch ID", ylab = "Environmental factor",
-       col = env_cols,
-       xlim = c(0.5, nrow(x)+0.5))
-  par(mar = c(1, 4, 0.5, 0.5))
-  plot(1, type = "n", xlab = "", ylab = "", xaxt = "n", yaxt = "n", xlim = c(0.5, nrow(x)+0.5), ylim = c(0, 1))
-  i <- 1
-  for (j in 1:nrow(x)){
-    polygon(x = c(i - 0.5, i + 0.5, i + 0.5, i - 0.5), y = c(0, 0, 1, 1), col = env_cols[j], border = NA)
-    i <- i + 1
-  }
+  p2 <- x %>%
+    ggplot() +
+    geom_vline(aes(xintercept = patch, color = env), linewidth = 200/nrow(x)) +
+    scale_color_gradient(low = "lightgreen", high = "#003a00") +
+    theme_minimal() +
+    xlab("Patch") +
+    theme(legend.position = "none")
+
+  gridExtra::grid.arrange(p1, p2, nrow = 2, heights = c(3, 1))
+
 }

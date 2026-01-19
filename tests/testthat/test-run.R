@@ -103,10 +103,9 @@ testthat::test_that("simulation runs", {
   lh = init_envt()
   lc = draw_lcom(mc = mc, lh = lh, nind = 100)
   lc = recruit(lc = lc, mc = mc, lh = lh, nind = 100)
-  lc = adv_age(lc = lc)
   lc = dem(lc = lc, mc = mc)
   lc = disperse(lc = lc, lh = lh, dispersal = 10)
-  # lc = forage(lc = lc, lh = lh, res_input = 10, R = 1000)
+  lc = forage(lc = lc, lh = lh)
 
   testthat::expect_true(exists("lc"))
 })

@@ -2,7 +2,7 @@
 % Please edit documentation in R/run_sim.R
 \name{run_sim_}
 \alias{run_sim_}
-\title{[Long output] Run a simulation of environmental filtering on specified metacommunity, local habitat, and local community objects}
+\title{Run a simulation of environmental filtering on specified metacommunity, local habitat, and local community objects}
 \usage{
 run_sim_(
   mc,
@@ -10,18 +10,18 @@ run_sim_(
   lc,
   nsteps = 500,
   progress_bar = FALSE,
-  age_crit = 10,
-  mass_crit = 5,
   recruitment = 0.05,
   dispersal = 0.05,
+  reproduction = 0.1,
+  expenditure = 0.1,
   res_input = 10,
-  R = 1000,
+  intake = 1,
   clustering = 1,
   dispersion = 1
 )
 }
 \arguments{
-\item{mc}{A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).}
+\item{mc}{A regional pool object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).}
 
 \item{lh}{A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).}
 
@@ -31,17 +31,17 @@ run_sim_(
 
 \item{progress_bar}{Logical, whether to show the progress bar for the simulation run; default to FALSE.}
 
-\item{age_crit}{Numeric; critical age at which half of the individuals die. Feeds into \code{draw_lcom()} and \code{dem()}.}
-
-\item{mass_crit}{Numeric; critical mass at which half of the individuals reproduce. Feeds into \code{draw_lcom()} and \code{dem()}.}
-
 \item{recruitment}{Non-negative double, recruitment rate (i.e., expectation of number of individuals recruited into local habitat per patch per time step). Feeds into \code{recruit()}.}
 
 \item{dispersal}{Non-negative numeric, dispersal rate per habitat patch, i.e., expectation of the number of individuals per patch that disperse to a neighboring patch. Feeds into \code{dispersal()}.}
 
+\item{reproduction}{Non-negative numeric; mass at which individuals reproduce. Feeds into \code{dem()}.}
+
+\item{expenditure}{Numeric; amount of body mass each individual needs to spend in order to survive one time step. Feeds into \code{dem()}.}
+
 \item{res_input}{Numeric, increment of the resource level within a time step. Feeds into \code{lh_input_res()}.}
 
-\item{R}{Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.}
+\item{intake}{Positive numeric, single-meal resource intake by an individual in an event of a successful feeding. Feeds into \code{forage()}.}
 
 \item{clustering}{Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
 If zero, local environmental conditions do not affect individual resource intake. Feeds into \code{forage()}.}
@@ -50,13 +50,28 @@ If zero, local environmental conditions do not affect individual resource intake
 If zero, trait differences among individuals do not affect resource intake. Feeds into \code{forage()}.}
 }
 \value{
-A list with a quasi-"FilterABM_lc" local community object that has an additional column for time step ([["lcs"]]).
-Additionally, habitat history at each time step ([["habitat"]]), and the total resource consumed per time step ([["consumed_resource"]]).
+A diagnostic named list with the following elements:
+[["mc"]] - input regional pool;
+[["lh"]] - input local habitat;
+[["params"]] - named vector, other simulation parameters;
+[["runtime"]] - time the simulation took, in minutes;
+[["extinct"]] - logical, whether the local community went extinct; if TRUE, the rest of the elements of the list are empty, otherwise, all metrics below are evaluated for the local community at the last time step;
+[["S"]] - number of species;
+[["nind"]] - number of individuals;
+[["sad"]] - species abundance distribution (SAD);
+[["sad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed SAD and a community of the same size randomly drawn from the regional pool;
+[["tad"]] - trait abundance distribution (TAD) as an output of kernel density estimation (stats::density());
+[["t_mean"]] - mean trait value;
+[["t_mean0"]] - mean trait value in a community of the same size randomly drawn from the regional pool;
+[["t_var"]] - trat variance;
+[["t_var0"]] - trat variance in a community of the same size randomly drawn from the regional pool;
+[["tad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed TAD and a community of the same size randomly drawn from the regional pool.
 }
 \description{
 Requires an input of pre-defined metacommunity, local habitat, and local community objects, the two latter of which are iteratively modified to reflect changes caused by environmental filtering.
-Unlike \code{run_FilterABM()}, this function is not fully enclosed, but expects pre-initialized objects.
+This function is not fully enclosed, but expects pre-initialized input objects for regional pool, local habitat, and community.
 This allows running multiple simulations on identical input.
 
-Unlike \code{run_sim()}, it saves the data from each time step, which does provide more insight on trait distribution across individuals with time, but is more memory-intensive.
+The output is memory-moderate: intermediate results of simulation steps are discarded.
+Use \code{run_sim()} to preserve all intermediate steps.
 }

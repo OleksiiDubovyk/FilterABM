@@ -1,7 +1,7 @@
 Package: FilterABM
 Type: Package
 Title: Agent-based modeling of trait-based environmental filtering
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: c(
     person(
       "Oleksii", "Dubovyk",
@@ -19,7 +19,9 @@ Imports:
     dplyr,
     tibble,
     progress,
-    ggplot2
+    ggplot2,
+    purrr,
+    gridExtra
 RoxygenNote: 7.3.2
 URL: https://github.com/OleksiiDubovyk/FilterABM
 BugReports: https://github.com/OleksiiDubovyk/FilterABM/issues
@@ -30,6 +32,8 @@ Suggests:
     bookdown,
     forcats,
     magrittr,
-    kableExtra
+    kableExtra,
+    tidyverse,
+    SobolSequence
 Config/testthat/edition: 3
 VignetteBuilder: knitr

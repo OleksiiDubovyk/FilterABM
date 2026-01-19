@@ -1,0 +1,1378 @@
+---
+title: "Variance-based sensitivity analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Variance-based sensitivity analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+version
+library(tidyverse)
+library(SobolSequence)
+library(FilterABM)
+```
+
+# Parameter hypercube boundaries
+
+## Parameter selection
+
+First, we need to identify the parameters of interest in the model of environmental filtering. FilterABM operates on total 16 parameters: regional pool initialization is governed by 6 parameters, local habitat -- by 3 parameters and spatial configuration type, simulation parameters -- by 7 parameters. 
+The code implementation has some more arguments on top of that, for example, regulating the relative strength of niche partitioning:
+
+- `init_meta()` has 6 arguments,
+
+- `init_envt()` has 4 arguments and 2 additional arguments depending on spatial configuration selected,
+
+- `draw_lcom()` has 3 arguments that affect the simulation directly,
+
+- `run_sim()` has 9 arguments that affect the simulation directly, and includes the following functions with their own parameters:
+
+  - `recruit()` with 1 important argument,
+  
+  - `adv_age()` with no important arguments,
+  
+  - `dem()` with 2 important arguments,
+  
+  - `disperse()` with 1 important argument,
+  
+  - `forage()` with 3 important arguments.
+  
+Here is the list of these parameters and the functions they act as arguments in:
+
+1. `M` -- regional pool species richness (`init_meta()`),
+
+2. `env_mean_mc` -- mean environmental factor value within the extent of the regional pool (`init_meta()`),
+
+3. `env_sd_mc` -- variation of environmental factor value within the extent of the regional pool (`init_meta()`),
+
+4. `cauchy` -- Cauchy function shape that connects species trait values with log-abundance in the regional pool (`init_meta()`),
+
+5. `trait_sds` -- intraspecific trait variation within the regional pool (`init_meta()`),
+
+6. `max_abun` -- abundance of the most common species within the regional pool (`init_meta()`),
+
+7. `npatch` -- number of habitat patches in the local environment (`init_envt()`),
+
+8. `res` -- initial available resource within habitat patch (`init_envt()`),
+
+9. `gradient` -- spatial configuration of environmental conditions across the patches (random, linear, correlated, or clustered) (`init_envt()`), with related parameters
+
+  - `K` -- number of clusters if configuration is clustered,
+  
+  - `rho` -- correlation of environmental factor with patch location if configuration is correlated,
+
+10. `env_mean_lh` -- mean environmental factor across all habitat patches (`init_envt()`),
+
+11. `env_sd_lh` -- variation of the environmental factor across all habitat patches (`init_envt()`),
+
+12. `nind = recruitment` -- number of individuals to be drawn from the regional pool per time step (`draw_lcom()`, `recruit()` and thus `run_sim()`),
+
+13. `age_crit` -- critical age at which half of individuals die (`draw_lcom()`, `dem()` and thus `run_sim()`),
+
+14. `mass_crit` -- critical mass at which half of individuals reproduce (`draw_lcom()`, `dem()` and thus `run_sim()`),
+
+15. `nsteps` -- number of time steps in a simulation run (`run_sim()`),
+
+16. `dispersal` -- number of individuals that move to a neighboring habitat patch per time step per patch (`disperse()` and thus`run_sim()`),
+
+17. `res_input` -- resource regeneration rate per time step per patch (`run_sim()`),
+
+18. `R` -- resource level at which there is no competition and all individuals consume resource (`run_sim()`),
+
+19. `clustering` -- effect of niche clustering on probability of competition (`forage()` and thus `run_sim()`),
+
+20. `dispersion` -- effect of niche dispersion on probability of trait filtering (`forage()` and thus `run_sim()`).
+
+As it becomes apparent, this model is clearly overparametrized. 
+However, none of these parameters are redundant; many of them are needed for biological realism.
+It can be argued, though, that some of these parameters are, rather, nuisance parameters --- they are used for realism of the model, but should not be of a primary interest.
+For example, `M` and `env_mean_mc` should probably be fixed as regional pool species richness and the exact regional mean trait value are not in a focus of studying ecological mechanism. 
+Furthermore, in regards of `env_mean_mc` and `env_mean_lh`, their absolute values are not as important for describing environmental filtering as much as the difference between them.
+Therefore, sensitivity analysis should rather be focused on such difference.
+For another example, parameters like `res`, `res_input`, and `R` were only introduced to the model to include the effects of resource availability (real communities would collapse if the resource is absent) so they could be painlessly excluded from the sensitivity analyses.
+
+Overall, the following parameters were chosen to be investigated:
+
+- `d_env` as an absolute difference between `env_mean_mc` and `env_mean_lh` (with set `env_mean_mc = 0`),
+
+- `env_sd_mc`,
+
+- `cauchy`,
+
+- `trait_sds`,
+
+- `gradient`,
+
+- `env_sd_lh`,
+
+- `recruitment`,
+
+- `dispersal`,
+
+- `age_crit`,
+
+- `mass_crit`,
+
+- `clustering`,
+
+- `dispersion`,
+
+which still adds up to 12 parameters in the parameter space.
+
+## Nuisance parameters
+
+Since some parameters were not included in the list above, we should define their fixed values used in simulation runs:
+
+- `M = 450`
+
+- `max_abun = 10^6`
+
+- `npatch = 100`
+
+- `res = 1000`
+
+- `K = 3`
+
+- `rho = 0.9`
+
+- `nsteps = 1000`
+
+- `res_input = 10`
+
+- `R = 1000`
+
+## Parameter ranges
+
+We define the ranges for parameter values as following:
+
+```{r eval=F, echo=T}
+param_ranges <- tibble(
+  d_env = c(0, 5),
+  env_sd_mc = c(0.1, 10),
+  cauchy = c(0.1, 25),
+  trait_sds = c(0, 1),
+  env_sd_lh = c(1, 5),
+  recruitment = c(0, 10),
+  dispersal = c(0, 10),
+  age_crit = c(1, 20),
+  mass_crit = c(1, 20),
+  clustering = c(0, 1),
+  dispersion = c(0, 1)
+)
+param_ranges
+```
+
+where the first row indicates the lower boundary of the parameter value and the second -- its maximum value.
+
+## Parameter hypercube
+
+Parameters were sampled using a low-discrepancy sequence as implemented in package `SobolSequence`. Such a quasi-random sampling design is optimal when model behavior is not yet known ([Puy et al. 2022](https://cran.r-project.org/web/packages/sensobol/vignettes/sensobol.pdf)).
+First, 22 random variables were created with 100 values in each.
+These 22 variables are then divided into two sets of 11, corresponding to the 11 parameters in question.
+
+```{r eval=F, echo=T}
+sseq <- SobolSequence::sobolSequence.points(dimR = 22, count = 100)
+randcols <- sample(1:22, 11, F)
+sseq1 <- sseq[,randcols]
+sseq2 <- sseq[,-randcols]
+```
+
+Next, we scale these variables by the desired minimum and maximum values for every parameter:
+
+```{r eval=F, echo=T}
+minmaxscale <- function(x, minx = min(x), maxx = max(x), minout, maxout){
+  minout + ((x - minx)*(maxout - minout))/(maxx - minx)
+}
+
+params1 <- sapply(1:11, function(variable){
+  minmaxscale(x = sseq1[, variable], 
+              minx = 0, maxx = 1, 
+              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
+              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
+})
+colnames(params1) <- colnames(param_ranges)
+params1 <- as_tibble(params1)
+
+params2 <- sapply(1:11, function(variable){
+  minmaxscale(x = sseq2[, variable], 
+              minx = 0, maxx = 1, 
+              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
+              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
+})
+colnames(params2) <- colnames(param_ranges)
+params2 <- as_tibble(params2)
+```
+
+Now we may construct the sample matrices as combinations of variables from `params1` and `params2` as required by Sobol' method.
+
+```{r eval=F, echo=T}
+`%notin%` <- function(x, y){!`%in%`(x, y)}
+
+sample_matrix <- bind_rows(
+  params1 %>%
+    mutate(submatrix = "A", .before = d_env),
+  params1 %>%
+    mutate(submatrix = "B", .before = d_env)
+) %>% bind_rows(
+  lapply(1:11, function(i){
+  bind_cols(params1[, ((1:11)[1:11 %notin% i])], params2[, i]) %>%
+    mutate(submatrix = as.character(i))
+}) %>%
+    bind_rows()
+)
+```
+
+Finally, it is important not to forget the last parameter in question -- spatial configuration of the local environment, which is a factor with four levels: random, clustered, correlated, or linear:
+
+```{r eval=F, echo=T}
+sample_matrix <- tidyr::expand_grid(
+  sample_matrix,
+  tibble(gradient = c("random", "clustered", "correlated", "linear"))
+)
+
+sample_matrix
+```
+
+```{r eval=F, echo=F}
+sample_matrix %>% write_csv("../../../sobol_matrix.csv")
+sample_matrix <- read_csv("../../../sobol_matrix.csv")
+```
+
+# Running simulations
+
+Since this sensitivity analysis requires 5200 independent runs of the agent-based model, this step was done using an high-performance computing (HPC) cluster.
+
+Here is an example of a code that would have been used to run a single simulation, for example, for the first row of parameters in `sample_matrix`.
+
+```{r echo=F, eval=F}
+# FOR TESTING
+i = 5
+
+t1 <- Sys.time()
+mc <- init_meta(M = 450,
+                env_mean_mc = 0, 
+                env_sd_mc = sample_matrix[i, "env_sd_mc"] %>% unlist(), 
+                cauchy = sample_matrix[i, "cauchy"] %>% unlist(), 
+                trait_sds = sample_matrix[i, "trait_sds"] %>% unlist(),
+                max_abun = 1e6)
+lh <- init_envt(npatch = 100, 
+               res = 1000, 
+               gradient = sample_matrix[i, "gradient"] %>% unlist(), 
+               K = 3, 
+               env_mean_lh = sample_matrix[i, "d_env"] %>% unlist(), 
+               env_sd_lh = sample_matrix[i, "env_sd_lh"] %>% unlist(), 
+               rho = 0.9)
+lc <- draw_lcom(mc = mc, 
+                lh = lh, 
+                nind = 10000, 
+                age_crit = sample_matrix[i, "age_crit"] %>% unlist(), 
+                mass_crit = sample_matrix[i, "mass_crit"] %>% unlist())
+runsim <- run_sim_(mc = mc, 
+                   lh = lh, 
+                   lc = lc, 
+                   nsteps = 1000, 
+                   progress_bar = T, 
+                   age_crit = sample_matrix[i, "age_crit"] %>% unlist(), 
+                   mass_crit = sample_matrix[i, "mass_crit"] %>% unlist(), 
+                   recruitment = sample_matrix[i, "recruitment"] %>% unlist(), 
+                   dispersal = sample_matrix[i, "dispersal"] %>% unlist(), 
+                   res_input = 10, 
+                   R = 1000, 
+                   clustering = sample_matrix[i, "clustering"] %>% unlist(), 
+                   dispersion = sample_matrix[i, "dispersion"] %>% unlist() )
+runsim[["env"]] <- lh %>%
+  select(-res)
+runsim[["params"]] <- sample_matrix[i, ]
+t2 <- Sys.time()
+runsim[["runtime"]] <- difftime(t2, t1, units = "mins") %>% as.numeric()
+
+runout <- list(
+  params = runsim[["params"]],
+  runtime = runsim[["runtime"]],
+  n = nrow(runsim$lcs),
+  env = runsim[["env"]],
+  mc = mc,
+  extinct = max(runsim$lcs$timestep) < 1000,
+  S_tot = runsim$lcs$species %>% 
+    unique() %>% 
+    length(),
+  S_time = runsim$lcs %>% 
+    group_by(timestep) %>% 
+    summarize(S = length(unique(species))),
+  n_time = runsim$lcs %>% 
+    group_by(timestep) %>% 
+    summarize(n = n()),
+  S = NA,
+  nind = NA,
+  sad = NA,
+  tad = NA,
+  tad_time = NA,
+  trait_patch = NA,
+  trait_patch_time = NA,
+  itv = NA,
+  itv_time = NA
+)
+
+if (!runout$extinct){
+  com <- runsim$lcs %>%
+    filter(timestep >= 500) %>%
+    distinct(species, trait)
+  
+  runout$S <- com$species %>% 
+    unique() %>% 
+    length()
+  
+  runout$nind <- nrow(com)
+  
+  runout$sad <- com %>%
+    group_by(species) %>%
+    summarise(n = n())
+  
+  runout$tad <- com$trait %>%
+    density(from = -40, to = 40)
+  
+  runout$tad_time <- runsim$lcs %>% 
+    group_by(timestep) %>% 
+    mutate(w = cut_width(x = trait, width = 1, center = 0)) %>% 
+    count(w) %>% 
+    mutate(
+      w = as.character(w) %>% 
+        strsplit(split = ",") %>% 
+        map(.f = function(x) unlist(x[[1]][1])) %>% 
+        str_remove_all(pattern = "[\\(\\[]") %>% 
+        as.numeric()
+    ) %>%
+    mutate(w = w + 0.5)
+  
+  runout$trait_patch <- runsim$lcs %>%
+    filter(timestep >= 500) %>%
+    group_by(patch) %>%
+    summarise(trait_mean = mean(trait),
+              trait_var = var(trait))
+  
+  runout$trait_patch_time <- runsim$lcs %>%
+    group_by(timestep, patch) %>%
+    summarise(trait_mean = mean(trait),
+              trait_var = var(trait))
+  
+  runout$itv <- com %>%
+    group_by(species) %>%
+    summarise(trait_mean = mean(trait), 
+              trait_var = var(trait))
+  
+  runout$itv_time <- runsim$lcs %>%
+    group_by(timestep, species) %>%
+    summarise(trait_mean = mean(trait),
+              trait_var = var(trait)) %>%
+    filter(!is.na(trait_var))
+  
+}
+```
+
+```{r echo=T, eval=F}
+i = 1
+
+t1 <- Sys.time()
+mc <- init_meta(M = 450,
+                env_mean_mc = 0, 
+                env_sd_mc = sample_matrix[i, "env_sd_mc"] %>% unlist(), 
+                cauchy = sample_matrix[i, "cauchy"] %>% unlist(), 
+                trait_sds = sample_matrix[i, "trait_sds"] %>% unlist(),
+                max_abun = 1e6)
+lh <- init_envt(npatch = 100, 
+               res = 1000, 
+               gradient = sample_matrix[i, "gradient"] %>% unlist(), 
+               K = 3, 
+               env_mean_lh = sample_matrix[i, "d_env"] %>% unlist(), 
+               env_sd_lh = sample_matrix[i, "env_sd_lh"] %>% unlist(), 
+               rho = 0.9)
+lc <- draw_lcom(mc = mc, 
+                lh = lh, 
+                nind = 10000, 
+                age_crit = sample_matrix[i, "age_crit"] %>% unlist(), 
+                mass_crit = sample_matrix[i, "mass_crit"] %>% unlist())
+runsim <- run_sim_(mc = mc, 
+                   lh = lh, 
+                   lc = lc, 
+                   nsteps = 1000, 
+                   progress_bar = T, 
+                   age_crit = sample_matrix[i, "age_crit"] %>% unlist(), 
+                   mass_crit = sample_matrix[i, "mass_crit"] %>% unlist(), 
+                   recruitment = sample_matrix[i, "recruitment"] %>% unlist(), 
+                   dispersal = sample_matrix[i, "dispersal"] %>% unlist(), 
+                   res_input = 10, 
+                   R = 1000, 
+                   clustering = sample_matrix[i, "clustering"] %>% unlist(), 
+                   dispersion = sample_matrix[i, "dispersion"] %>% unlist() )
+runsim[["env"]] <- lh %>%
+  select(-res)
+runsim[["params"]] <- sample_matrix[i, ]
+t2 <- Sys.time()
+runsim[["runtime"]] <- difftime(t2, t1, units = "mins") %>% as.numeric()
+
+runout <- list(
+  params = runsim[["params"]],
+  runtime = runsim[["runtime"]],
+  n = nrow(runsim$lcs),
+  env = runsim[["env"]],
+  mc = mc,
+  extinct = max(runsim$lcs$timestep) < 1000,
+  S_tot = runsim$lcs$species %>% 
+    unique() %>% 
+    length(),
+  S_time = runsim$lcs %>% 
+    group_by(timestep) %>% 
+    summarize(S = length(unique(species))),
+  n_time = runsim$lcs %>% 
+    group_by(timestep) %>% 
+    summarize(n = n()),
+  S = NA,
+  nind = NA,
+  sad = NA,
+  tad = NA,
+  tad_time = NA,
+  trait_patch = NA,
+  trait_patch_time = NA,
+  itv = NA,
+  itv_time = NA
+)
+
+if (!runout$extinct){
+  com <- runsim$lcs %>%
+    filter(timestep >= 500) %>%
+    distinct(species, trait)
+  
+  runout$S <- com$species %>% 
+    unique() %>% 
+    length()
+  
+  runout$nind <- nrow(com)
+  
+  runout$sad <- com %>%
+    group_by(species) %>%
+    summarise(n = n())
+  
+  runout$tad <- com$trait %>%
+    density(from = -40, to = 40)
+  
+  runout$tad_time <- runsim$lcs %>% 
+    group_by(timestep) %>% 
+    mutate(w = cut_width(x = trait, width = 1, center = 0)) %>% 
+    count(w) %>% 
+    mutate(
+      w = as.character(w) %>% 
+        strsplit(split = ",") %>% 
+        map(.f = function(x) unlist(x[[1]][1])) %>% 
+        str_remove_all(pattern = "[\\(\\[]") %>% 
+        as.numeric()
+    ) %>%
+    mutate(w = w + 0.5)
+  
+  runout$trait_patch <- runsim$lcs %>%
+    filter(timestep >= 500) %>%
+    group_by(patch) %>%
+    summarise(trait_mean = mean(trait),
+              trait_var = var(trait))
+  
+  runout$trait_patch_time <- runsim$lcs %>%
+    group_by(timestep, patch) %>%
+    summarise(trait_mean = mean(trait),
+              trait_var = var(trait))
+  
+  runout$itv <- com %>%
+    group_by(species) %>%
+    summarise(trait_mean = mean(trait), 
+              trait_var = var(trait))
+  
+  runout$itv_time <- runsim$lcs %>%
+    group_by(timestep, species) %>%
+    summarise(trait_mean = mean(trait),
+              trait_var = var(trait)) %>%
+    filter(!is.na(trait_var))
+  
+}
+
+runout %>% saveRDS(paste0("<path>/fabm", i, ".rds"))
+```
+
+However, for HPC, some several more steps should be outlined.
+The job was submitted as a single folder with the following files:
+
+- `job.sbatch.sh`
+
+```{bash echo=T, eval=F}
+#!/bin/bash -l
+
+#SBATCH -J fABM
+#SBATCH -o myLog.txt
+#SBATCH -c 36
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=***
+
+enable_lmod
+module load container_env R/4.2
+
+crun Rscript filterABM_sensitivity.R
+```
+
+- `sobol_matrix.csv`, which is exported `sample_matrix` object from above
+
+- `filterABM_sensitivity.R`
+
+```{r eval=F}
+library(doParallel)
+library(foreach)
+library(tidyverse)
+library(lubridate)
+library(progress)
+library(devtools)
+if(!require("FilterABM")) devtools::install_github("OleksiiDubovyk/FilterABM")
+library(FilterABM)
+
+sample_matrix <- read_csv("./sobol_matrix.csv")
+
+num_cores <- detectCores()
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+foreach(i = 1:nrow(sample_matrix), 
+        .combine = 'c',
+        .packages = c("tidyverse", "progress", "lubridate", "FilterABM")) %dopar%{
+          t1 <- Sys.time()
+          mc <- init_meta(M = 450,
+                          env_mean_mc = 0, 
+                          env_sd_mc = sample_matrix[i, "env_sd_mc"] %>% unlist(), 
+                          cauchy = sample_matrix[i, "cauchy"] %>% unlist(), 
+                          trait_sds = sample_matrix[i, "trait_sds"] %>% unlist(),
+                          max_abun = 1e6)
+          lh <- init_envt(npatch = 100, 
+                          res = 1000, 
+                          gradient = sample_matrix[i, "gradient"] %>% unlist(), 
+                          K = 3, 
+                          env_mean_lh = sample_matrix[i, "d_env"] %>% unlist(), 
+                          env_sd_lh = sample_matrix[i, "env_sd_lh"] %>% unlist(), 
+                          rho = 0.9)
+          lc <- draw_lcom(mc = mc, 
+                          lh = lh, 
+                          nind = 10000, 
+                          age_crit = sample_matrix[i, "age_crit"] %>% unlist(), 
+                          mass_crit = sample_matrix[i, "mass_crit"] %>% unlist())
+          runsim <- run_sim_(mc = mc, 
+                             lh = lh, 
+                             lc = lc, 
+                             nsteps = 1000, 
+                             progress_bar = T, 
+                             age_crit = sample_matrix[i, "age_crit"] %>% unlist(), 
+                             mass_crit = sample_matrix[i, "mass_crit"] %>% unlist(), 
+                             recruitment = sample_matrix[i, "recruitment"] %>% unlist(), 
+                             dispersal = sample_matrix[i, "dispersal"] %>% unlist(), 
+                             res_input = 10, 
+                             R = 1000, 
+                             clustering = sample_matrix[i, "clustering"] %>% unlist(), 
+                             dispersion = sample_matrix[i, "dispersion"] %>% unlist() )
+          runsim[["env"]] <- lh %>%
+            select(-res)
+          runsim[["params"]] <- sample_matrix[i, ]
+          t2 <- Sys.time()
+          runsim[["runtime"]] <- difftime(t2, t1, units = "mins") %>% as.numeric()
+          
+          runout <- list(
+            params = runsim[["params"]],
+            runtime = runsim[["runtime"]],
+            n = nrow(runsim$lcs),
+            env = runsim[["env"]],
+            mc = mc,
+            extinct = max(runsim$lcs$timestep) < 1000,
+            S_tot = runsim$lcs$species %>% 
+              unique() %>% 
+              length(),
+            S_time = runsim$lcs %>% 
+              group_by(timestep) %>% 
+              summarize(S = length(unique(species))),
+            n_time = runsim$lcs %>% 
+              group_by(timestep) %>% 
+              summarize(n = n()),
+            S = NA,
+            nind = NA,
+            sad = NA,
+            tad = NA,
+            tad_time = NA,
+            trait_patch = NA,
+            trait_patch_time = NA,
+            itv = NA,
+            itv_time = NA
+          )
+          
+          if (!runout$extinct){
+            com <- runsim$lcs %>%
+              filter(timestep >= 500) %>%
+              distinct(species, trait)
+            
+            runout$S <- com$species %>% 
+              unique() %>% 
+              length()
+            
+            runout$nind <- nrow(com)
+            
+            runout$sad <- com %>%
+              group_by(species) %>%
+              summarise(n = n())
+            
+            runout$tad <- com$trait %>%
+              density(from = -40, to = 40)
+            
+            runout$tad_time <- runsim$lcs %>% 
+              group_by(timestep) %>% 
+              mutate(w = cut_width(x = trait, width = 1, center = 0)) %>% 
+              count(w) %>% 
+              mutate(
+                w = as.character(w) %>% 
+                  strsplit(split = ",") %>% 
+                  map(.f = function(x) unlist(x[[1]][1])) %>% 
+                  str_remove_all(pattern = "[\\(\\[]") %>% 
+                  as.numeric()
+              ) %>%
+              mutate(w = w + 0.5)
+            
+            runout$trait_patch <- runsim$lcs %>%
+              filter(timestep >= 500) %>%
+              group_by(patch) %>%
+              summarise(trait_mean = mean(trait),
+                        trait_var = var(trait))
+            
+            runout$trait_patch_time <- runsim$lcs %>%
+              group_by(timestep, patch) %>%
+              summarise(trait_mean = mean(trait),
+                        trait_var = var(trait))
+            
+            runout$itv <- com %>%
+              group_by(species) %>%
+              summarise(trait_mean = mean(trait), 
+                        trait_var = var(trait))
+            
+            runout$itv_time <- runsim$lcs %>%
+              group_by(timestep, species) %>%
+              summarise(trait_mean = mean(trait),
+                        trait_var = var(trait)) %>%
+              filter(!is.na(trait_var))
+            
+          }
+          runout %>% saveRDS(paste0("./out/fabm", i, ".rds"))
+        }
+
+stopCluster(cl)
+```
+
+After the job is done, we can write routines to extract their results into a format suitable for sensitivity analysis.
+
+# Extracting simulation outputs
+
+Several possible output parameters can be of interest.
+For simplicity, we will begin with the most straightforward ones.
+
+```{r echo=T, eval=F}
+library(tidyverse)
+library(progress)
+
+outfolder <- "./out"
+outfiles <- list.files(outfolder, full.names = T)
+
+# Functions to estimate deviation of SAD from regional pool
+
+sad_ks <- function(sad1, sad2){
+  len <- max(length(sad1), length(sad2))
+  x1 <- sort(sad1/sum(sad1))
+  x2 <- sort(sad2/sum(sad2))
+  c1 <- cumsum(x1)
+  c2 <- cumsum(x2)
+  if (length(sad1) > length(sad2)){
+    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
+  } else if (length(sad1) < length(sad2)) {
+    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
+  }
+  return(max(abs(c1 - c2)))
+}
+
+boot_sad_ks <- function(regpool, obs_sad, nperm = 100){
+  ks <- numeric(nperm)
+  N <- sum(obs_sad)
+  for (i in 1:nperm){
+    rand_sad <- sample(regpool$species, 
+                       size = N, replace = T, 
+                       prob = regpool$abundance/sum(regpool$abundance))
+    
+    rand_sad <- sapply(sort(unique(rand_sad)),
+                       function(x){
+                         length(rand_sad[rand_sad == x])
+                       })
+    
+    ks[i] <- sad_ks(rand_sad, obs_sad)
+  }
+  return(median(ks))
+}
+
+boot_sad_ks_wrap <- function(file){
+  if (file$extinct == FALSE){
+    boot_sad_ks(regpool = file$mc, obs_sad = file$sad$n)
+  } else {
+    NA
+  }
+}
+
+# Function to estimate deviation of TAD from regional pool
+
+tad_ks <- function(tad1, tad2){
+  c1 <- cumsum(tad1$y)
+  c1 <- c1 / max(c1)
+  c2 <- cumsum(tad2$y)
+  c2 <- c2 / max(c2)
+  return(max(abs(c1 - c2)))
+}
+
+tad_ks_wrap <- function(file){
+  if (file$extinct == FALSE){
+    tad_ks(
+      tad1 = sapply(1:nrow(file$mc), function(i){
+        rep(file$mc$trait[i], times = file$mc$abundance[i])
+      }) %>% 
+        unlist() %>% 
+        density(from = -40, to = 40),
+      tad2 = file$tad)
+  } else {
+    NA
+  }
+}
+
+# progress bar
+
+pb <- progress_bar$new(
+  format = "extracting [:bar] :percent in :elapsed, current :current",
+  total = length(outfiles), clear = FALSE, width = 120)
+
+basic_results <- tibble()
+
+for (filename in outfiles){
+  pb$tick()
+  outfile <- readRDS(filename)
+  basic_results <- bind_rows(
+    basic_results,
+    outfile$params %>%
+      mutate(
+        index = strsplit(filename, ".rds")[[1]] %>% 
+          strsplit("./out/fabm") %>% 
+          .[[1]] %>% .[2],
+        runtime = outfile$runtime,
+        extinct = outfile$extinct,
+        nind = outfile$nind,
+        S = outfile$S,
+        ks_sad = boot_sad_ks_wrap(outfile),
+        ks_tad = tad_ks_wrap(outfile)
+      )
+  )
+}
+
+# basic_results <- lapply(
+#   outfiles,
+#   function(filename){
+#     pb$tick()
+#     outfile <- readRDS(filename)
+#     outfile$params %>%
+#       mutate(
+#         index = strsplit(filename, ".rds")[[1]] %>% 
+#           strsplit("./out/fabm") %>% 
+#           .[[1]] %>% .[2],
+#         runtime = outfile$runtime,
+#         extinct = outfile$extinct,
+#         nind = outfile$nind,
+#         S = outfile$S,
+#         ks_sad = boot_sad_ks_wrap(outfile),
+#         ks_tad = tad_ks_wrap(outfile)
+#       )
+#   }
+# ) %>%
+#   bind_rows()
+
+basic_results %>% write_csv("./basic_results.csv")
+```
+
+```{r echo=F, eval=T}
+basic_results <- read_csv("./basic_results.csv")
+
+basic_results <- basic_results %>%
+  mutate(submatrix = case_when(
+    submatrix == "A" ~ "A",
+    submatrix == "B" ~ "B",
+    submatrix == "1" ~ "d_env",
+    submatrix == "2" ~ "env_sd_mc",
+    submatrix == "3" ~ "cauchy",
+    submatrix == "4" ~ "trait_sds",
+    submatrix == "5" ~ "env_sd_lh",
+    submatrix == "6" ~ "recruitment",
+    submatrix == "7" ~ "dispersal",
+    submatrix == "8" ~ "age_crit",
+    submatrix == "9" ~ "mass_crit",
+    submatrix == "10" ~ "niche_clust",
+    submatrix == "11" ~ "niche_disp"
+  )
+  )
+```
+
+# Basic sensitivity analysis
+
+Let's conduct sensitivity analysis using Sobol' method. For that, we could use the `sensobol` package, but for compatibility with our data some functions needed to be rewritten. Therefore, we write our own function, although mainly influenced by the original code of `sensobol`.
+
+```{r echo=F, eval=F}
+# SCRAP PAPER -- SENSITIVITY INDICES
+library(sensobol)
+N <- 2^10
+k <- 8
+params <- paste("$x_", 1:k, "$", sep = "")
+R <- 10^3
+type <- "norm"
+conf <- 0.95
+mat <- sobol_matrices(N = N, params = params)
+y <- sobol_Fun(mat)
+plot_scatter(data = mat, N = N, Y = y, params = params)
+plot_multiscatter(data = mat, N = N, Y = y, params = params)
+ind <- sobol_indices(Y = y, N = N, params = params, boot = T, R = R, type = type, conf = conf)
+ind$results %>% as_tibble()
+ind.dummy <- sobol_dummy(Y = y, N = N, params = params, boot = T, R = R)
+plot(ind, dummy = ind.dummy)
+
+# recreate
+
+mxs <- rep(c("A", "B", 1:8), each = 1024)
+# saltelli
+(1/length(which(mxs == "A"))) * sum(y[which(mxs == "B")] * (y[which(mxs == "1")] - y[which(mxs == "A")])) / var(y[which(mxs %in% c("A", "B"))])
+# jansen
+(1/(2*length(which(mxs == "A")))) * sum((y[which(mxs == "A")] - y[which(mxs == "1")])^2) / var(y[which(mxs %in% c("A", "B"))])
+
+sens <- function(data, parameter, Y, type = "first", boot = T, nperm = 999){
+  #
+  # `data` = a tibble that contains the following columns:
+  #   `submatrix` - chr, named as "A", "B", and parameter names
+  #   `index` - int, row index that should be consistent across matrices
+  #   `<any name>` - num, simulation result
+  # `parameter` - chr, parameter name as written in `submatrix`
+  # `Y` - chr, column name for simulation result
+  #
+  
+  sensitivity <- numeric(1)
+  
+  Y_A <- data %>%
+    filter(submatrix == "A") %>%
+    arrange(index) %>%
+    .[, Y] %>%
+    unlist() %>% unname()
+  
+  Y_B <- data %>%
+    filter(submatrix == "B") %>%
+    arrange(index) %>%
+    .[, Y] %>%
+    unlist() %>% unname()
+  
+  Y_fact <- data %>%
+    filter(submatrix == parameter) %>%
+    arrange(index) %>%
+    .[, Y] %>%
+    unlist() %>% unname()
+  
+  idx_na <- c(
+    which(is.na(Y_A)),
+    which(is.na(Y_B)),
+    which(is.na(Y_fact))
+  ) %>% unique()
+  
+  if (length(idx_na) > 0){
+    Y_A <- Y_A[-idx_na]
+    Y_B <- Y_B[-idx_na]
+    Y_fact <- Y_fact[-idx_na]
+  }
+  
+  Y_var <- var(c(Y_A, Y_B))
+  N <- length(Y_A)
+  
+  if (type == "first"){
+    
+    sensitivity <- (1 / N) * sum( Y_B * (Y_fact - Y_A)) / Y_var
+    
+    if (boot){
+      
+      sens_boot <- numeric(nperm)
+      
+      for (perm in 1:nperm){
+        
+        boot_sample <- sample(1:length(Y_A), length(Y_A), replace = T)
+        
+        bY_A <- Y_A[boot_sample]
+        bY_B <- Y_B[boot_sample]
+        bY_fact <- Y_fact[boot_sample]
+        
+        sens_boot[perm] <- (1 / N) * sum( bY_B * (bY_fact - bY_A)) / var(c(bY_A, bY_B))
+        
+      }
+    }
+    
+  } else if (type == "total") {
+
+    sensitivity <- (1 / (2*N)) * sum( (Y_A - Y_fact)^2 ) / Y_var
+    
+    if (boot){
+      
+      sens_boot <- numeric(nperm)
+      
+      for (perm in 1:nperm){
+        
+        boot_sample <- sample(1:length(Y_A), length(Y_A), replace = T)
+        
+        bY_A <- Y_A[boot_sample]
+        bY_B <- Y_B[boot_sample]
+        bY_fact <- Y_fact[boot_sample]
+        
+        sens_boot[perm] <- (1 / (2*N)) * sum( (bY_A - bY_fact)^2 ) / var(c(bY_A, bY_B))
+        
+      }
+    }
+    
+  }
+  
+  if (boot){
+    return(c(
+      "estimate" = sensitivity,
+      "L95CI" = quantile(sens_boot, probs = 0.025),
+      "U95CI" = quantile(sens_boot, probs = 0.975)
+    ))
+  } else {
+    return(c(
+      "estimate" = sensitivity,
+      "L95CI" = NA,
+      "U95CI" = NA
+    ))
+  }
+  
+}
+
+tibble(
+  submatrix = rep(c("A", "B", 1:8), each = 1024),
+  index = rep(1:1024, 10),
+  y = y
+) %>%
+  sens(parameter = "1", Y = "y", type = "first")
+
+tibble(
+  submatrix = rep(c("A", "B", 1:8), each = 1024),
+  index = rep(1:1024, 10),
+  y = y
+) %>%
+  sens(parameter = "1", Y = "y", type = "total")
+
+ind$results
+```
+
+```{r echo=TRUE}
+sens <- function(data, parameter, Y, type = "first", boot = T, nperm = 999){
+  #
+  # `data` = a tibble that contains the following columns:
+  #   `submatrix` - chr, named as "A", "B", and parameter names
+  #   `index` - int, row index that should be consistent across matrices
+  #   `<any name>` - num, simulation result
+  # `parameter` - chr, parameter name as written in `submatrix`
+  # `Y` - chr, column name for simulation result
+  # `type` - chr, estimator type, "first" for first-order index and "total" for total-order
+  # `boot` - lgl, whether to estimate 95% CI
+  # `nperm` - int, if `boot = T`, how many permutations to use
+  #
+  
+  sensitivity <- numeric(1)
+  
+  Y_A <- data %>%
+    filter(submatrix == "A") %>%
+    arrange(index) %>%
+    .[, Y] %>%
+    unlist() %>% unname()
+  
+  Y_B <- data %>%
+    filter(submatrix == "B") %>%
+    arrange(index) %>%
+    .[, Y] %>%
+    unlist() %>% unname()
+  
+  Y_fact <- data %>%
+    filter(submatrix == parameter) %>%
+    arrange(index) %>%
+    .[, Y] %>%
+    unlist() %>% unname()
+  
+  idx_na <- c(
+    which(is.na(Y_A)),
+    which(is.na(Y_B)),
+    which(is.na(Y_fact))
+  ) %>% unique()
+  
+  if (length(idx_na) > 0){
+    Y_A <- Y_A[-idx_na]
+    Y_B <- Y_B[-idx_na]
+    Y_fact <- Y_fact[-idx_na]
+  }
+  
+  Y_var <- var(c(Y_A, Y_B))
+  N <- length(Y_A)
+  
+  if (Y_var <= 0){
+    warning(
+      "Zero variance in sensitivity analysis. \n", call. = T
+    )
+    return(c(
+      "estimate" = NA,
+      "L95CI" = NA,
+      "U95CI" = NA
+    ))
+  }
+  
+  if (type == "first"){
+    
+    sensitivity <- (1 / N) * sum( Y_B * (Y_fact - Y_A)) / Y_var
+    
+    dY <- mean(Y_A * Y_B)
+    dY_var <- (1 / (2*N - 1)) * sum(Y_A^2 + Y_B^2) - dY
+    dummy_sens <- (1 / (N-1) * sum(Y_A * Y_B) - dY) / dY_var
+    dummy_sens <- ifelse(dummy_sens < 0, 0, dummy_sens)
+    crit <- sensitivity <= dummy_sens
+    
+    if (boot){
+      
+      sens_boot <- numeric(nperm)
+      
+      for (perm in 1:nperm){
+        
+        boot_sample <- sample(1:length(Y_A), length(Y_A), replace = T)
+        
+        bY_A <- Y_A[boot_sample]
+        bY_B <- Y_B[boot_sample]
+        bY_fact <- Y_fact[boot_sample]
+        
+        sens_boot[perm] <- (1 / N) * sum( bY_B * (bY_fact - bY_A)) / var(c(bY_A, bY_B))
+        
+        sens_boot <- sens_boot[!is.na(sens_boot)]
+        
+        crit <- mean(sens_boot <= dummy_sens)
+        
+      }
+    }
+    
+  } else if (type == "total") {
+
+    sensitivity <- (1 / (2*N)) * sum( (Y_A - Y_fact)^2 ) / Y_var
+    
+    dY <- mean(Y_A * Y_B)
+    dY_var <- (1 / (2*N - 1)) * sum(Y_A^2 + Y_B^2) - dY
+    dummy_sens <- 1 - (1 / (N - 1) * sum(Y_B * Y_B) - dY) / dY_var
+    dummy_sens <- ifelse(dummy_sens < 0, 0, dummy_sens)
+    crit <- sensitivity <= dummy_sens
+    
+    if (boot){
+      
+      sens_boot <- numeric(nperm)
+      
+      for (perm in 1:nperm){
+        
+        boot_sample <- sample(1:length(Y_A), length(Y_A), replace = T)
+        
+        bY_A <- Y_A[boot_sample]
+        bY_B <- Y_B[boot_sample]
+        bY_fact <- Y_fact[boot_sample]
+        
+        sens_boot[perm] <- (1 / (2*N)) * sum( (bY_A - bY_fact)^2 ) / var(c(bY_A, bY_B))
+        
+        sens_boot <- sens_boot[!is.na(sens_boot)]
+        
+        crit <- mean(sens_boot <= dummy_sens)
+        
+      }
+    }
+    
+  }
+  
+  if (boot){
+    return(c(
+      "estimate" = sensitivity,
+      "L95CI" = quantile(sens_boot, probs = 0.025) %>% unname(),
+      "U95CI" = quantile(sens_boot, probs = 0.975) %>% unname(),
+      "p" = crit
+    ))
+  } else {
+    return(c(
+      "estimate" = sensitivity,
+      "L95CI" = NA,
+      "U95CI" = NA,
+      "p" = crit
+    ))
+  }
+  
+}
+```
+
+Now, let's build a wrapper around this function.
+
+```{r echo=T, eval=T}
+sens_all <- function(data, Y, boot = T, nperm = 999){
+  #
+  # `data` = a tibble that contains the following columns:
+  #   `submatrix` - chr, named as "A", "B", and parameter names
+  #   `index` - int, row index that should be consistent across matrices
+  #   `<any name>` - num, simulation result
+  # `Y` - chr, column name for simulation result
+  # `boot` - lgl, whether to estimate 95% CI
+  # `nperm` - int, if `boot = T`, how many permutations to use
+  #
+  
+  pars <- unique(data$submatrix)
+  pars <- pars[!(pars %in% c("A", "B"))]
+  
+  first <- lapply(
+    pars, 
+    function(par){
+      sens(data = data, parameter = par, Y = Y, type = "first", boot = boot, nperm = nperm)
+    }
+  ) %>% bind_rows() %>%
+    mutate(parameter = pars,
+           type = "first")
+  
+  total <- lapply(
+    pars, 
+    function(par){
+      sens(data = data, parameter = par, Y = Y, type = "total", boot = boot, nperm = nperm)
+    }
+  ) %>% bind_rows() %>%
+    mutate(parameter = pars,
+           type = "total")
+  
+  return(
+    bind_rows(
+      first, total
+    )
+  )
+  
+}
+```
+
+Now, we can look at our preliminary sensitivity analyses.
+
+## Simulation time
+
+```{r}
+sens_runtime <- basic_results %>% 
+  sens_all(Y = "runtime")
+
+sens_runtime %>% filter(type == "first") %>% arrange(desc(estimate))
+sens_runtime %>% filter(type == "total") %>% arrange(desc(estimate))
+```
+
+## Extinction probability
+
+```{r}
+sens_extinct <- basic_results %>% 
+  sens_all(Y = "extinct")
+
+sens_extinct %>% filter(type == "first") %>% arrange(desc(estimate))
+sens_extinct %>% filter(type == "total") %>% arrange(desc(estimate))
+```
+
+# Number of individuals
+
+```{r}
+sens_nind <- basic_results %>% 
+  sens_all(Y = "nind")
+
+sens_nind %>% filter(type == "first") %>% arrange(desc(estimate))
+sens_nind %>% filter(type == "total") %>% arrange(desc(estimate))
+```
+
+# Species richness
+
+```{r}
+sens_S <- basic_results %>% 
+  sens_all(Y = "S")
+
+sens_S %>% filter(type == "first") %>% arrange(desc(estimate))
+sens_S %>% filter(type == "total") %>% arrange(desc(estimate))
+```
+
+# SAD
+
+```{r eval = F}
+outfile <- readRDS("./vignettes/fabm10.rds")
+
+
+N <- outfile$nind
+
+rand_sad <- sample(outfile$mc$species, 
+                   size = N, replace = T, 
+                   prob = outfile$mc$abundance/sum(outfile$mc$abundance))
+
+rand_sad <- sapply(sort(unique(rand_sad)),
+       function(x){
+         length(rand_sad[rand_sad == x])
+       })
+
+plot(x = 1:length(rand_sad),
+     y = sort(rand_sad),
+     pch = 16, log = "y",
+     ylim = c(1, max(rand_sad, outfile$sad$n)))
+points(x = 1:nrow(outfile$sad),
+       y = sort(outfile$sad$n),
+       pch = 16, col = "red")
+
+plot(x = 1:length(rand_sad),
+     y = sort(rand_sad) %>% cumsum(),
+     pch = 16,
+     ylim = c(1, max(sum(rand_sad), sum(outfile$sad$n))))
+points(x = 1:nrow(outfile$sad),
+       y = sort(outfile$sad$n) %>% cumsum(),
+       pch = 16, col = "red")
+
+sad_cmf <- function(sad1, sad2){
+  len <- max(length(sad1), length(sad2))
+  x1 <- sort(sad1/sum(sad1))
+  x2 <- sort(sad2/sum(sad2))
+  c1 <- cumsum(x1)
+  c2 <- cumsum(x2)
+  if (length(sad1) > length(sad2)){
+    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
+  } else if (length(sad1) < length(sad2)) {
+    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
+  }
+  return(list(c1, c2))
+}
+
+tmp <- sad_cmf(log(rand_sad), log(outfile$sad$n))
+
+plot(tmp[[1]], type = "l")
+lines(1:length(tmp[[2]]), tmp[[2]], col = "red")
+
+outfile$mc %>%
+  left_join(outfile$sad, by = "species") %>%
+  ggplot(aes(x = abundance, y = n)) +
+  geom_point()
+
+sad_ks <- function(sad1, sad2){
+  len <- max(length(sad1), length(sad2))
+  x1 <- sort(sad1/sum(sad1))
+  x2 <- sort(sad2/sum(sad2))
+  c1 <- cumsum(x1)
+  c2 <- cumsum(x2)
+  if (length(sad1) > length(sad2)){
+    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
+  } else if (length(sad1) < length(sad2)) {
+    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
+  }
+  return(max(abs(c1 - c2)))
+}
+
+boot_sad_ks <- function(regpool, obs_sad, nperm = 100){
+  ks <- numeric(nperm)
+  N <- sum(obs_sad)
+  for (i in 1:nperm){
+    rand_sad <- sample(regpool$species, 
+                       size = N, replace = T, 
+                       prob = regpool$abundance/sum(regpool$abundance))
+    
+    rand_sad <- sapply(sort(unique(rand_sad)),
+                       function(x){
+                         length(rand_sad[rand_sad == x])
+                       })
+    
+    ks[i] <- sad_ks(rand_sad, obs_sad)
+  }
+  return(ks)
+}
+
+tmp <- boot_sad_ks(outfile$mc, obs_sad = outfile$sad$n)
+
+
+
+
+
+tad_exp <- sapply(1:nrow(outfile$mc), function(i){
+  rep(outfile$mc$trait[i], times = outfile$mc$abundance[i])
+}) %>% unlist() %>% density(from = -40, to = 40)
+tad_obs <- outfile$tad
+
+cumsum(tad_exp$y) / cumsum(tad_exp$y)[length(tad_exp$y)]
+
+plot(tad_exp)
+lines(tad_obs, col = "red")
+
+plot(1:512, cumsum(tad_exp$y) / cumsum(tad_exp$y)[length(tad_exp$y)], pch = 16, xlim = c(245, 270))
+lines(1:512, cumsum(tad_obs$y) / cumsum(tad_obs$y)[length(tad_obs$y)], col = "red")
+
+tad_ks <- function(tad1, tad2){
+  c1 <- cumsum(tad1$y)
+  c1 <- c1 / max(c1)
+  c2 <- cumsum(tad2$y)
+  c2 <- c2 / max(c2)
+  return(max(abs(c1 - c2)))
+}
+
+tad_ks(tad_exp, tad_obs)
+```
+
+```{r eval=F}
+# SAD
+
+sad_ks <- function(sad1, sad2){
+  len <- max(length(sad1), length(sad2))
+  x1 <- sort(sad1/sum(sad1))
+  x2 <- sort(sad2/sum(sad2))
+  c1 <- cumsum(x1)
+  c2 <- cumsum(x2)
+  if (length(sad1) > length(sad2)){
+    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
+  } else if (length(sad1) < length(sad2)) {
+    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
+  }
+  return(max(abs(c1 - c2)))
+}
+
+boot_sad_ks <- function(regpool, obs_sad, nperm = 100){
+  ks <- numeric(nperm)
+  N <- sum(obs_sad)
+  for (i in 1:nperm){
+    rand_sad <- sample(regpool$species, 
+                       size = N, replace = T, 
+                       prob = regpool$abundance/sum(regpool$abundance))
+    
+    rand_sad <- sapply(sort(unique(rand_sad)),
+                       function(x){
+                         length(rand_sad[rand_sad == x])
+                       })
+    
+    ks[i] <- sad_ks(rand_sad, obs_sad)
+  }
+  return(median(ks))
+}
+
+tmp <- boot_sad_ks(outfile$mc, obs_sad = outfile$sad$n)
+
+# TAD
+
+tad_ks <- function(tad1, tad2){
+  c1 <- cumsum(tad1$y)
+  c1 <- c1 / max(c1)
+  c2 <- cumsum(tad2$y)
+  c2 <- c2 / max(c2)
+  return(max(abs(c1 - c2)))
+}
+
+tad_ks(tad_exp, tad_obs)
+```
+

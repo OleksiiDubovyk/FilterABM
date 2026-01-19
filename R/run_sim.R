@@ -10,15 +10,103 @@ rkde <- function(kde, n = 1) {
   sample(x = kde$x, size = n, replace = TRUE, prob = kde$y) + rnorm(n = n, sd = kde$bw)
 }
 
+#' Helper, Kolmogorov-Smirnov statistic for two empirical species abundance distributions
+#'
+#' @param sad1 Vector, abundances of species in one community
+#' @param sad2 Vector, abundances of species in the second community
+#'
+#' @returns Kolmogorov-Smirnov statistic
+#' @export
+#'
+sad_ks <- function(sad1, sad2){
+  len <- max(length(sad1), length(sad2))
+  x1 <- sort(sad1/sum(sad1))
+  x2 <- sort(sad2/sum(sad2))
+  c1 <- cumsum(x1)
+  c2 <- cumsum(x2)
+  if (length(sad1) > length(sad2)){
+    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
+  } else if (length(sad1) < length(sad2)) {
+    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
+  }
+  return(max(abs(c1 - c2)))
+}
+
+#' Helper, permutational expectation of Kolmogorov-Smirnov statistic for an observed SAD and SAD from random sample of regional pool
+#'
+#' @param sad Vector, abundances of species in the observed community
+#' @param mc A regional pool object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
+#' @param nperm Numeric, number of permutations.
+#'
+#' @returns Kolmogorov-Smirnov statistic for each permutation
+#' @export
+#'
+sad_ks_boot <- function(sad, mc, nperm = 100){
+  ks_boot <- numeric(nperm)
+  n <- sum(sad)
+  for (i in 1:nperm){
+    sad_exp <- mc[sample(1:nrow(mc), size = n, replace = T, prob = mc$abundance), ] %>%
+      group_by(species) %>%
+      summarise(n = n()) %>%
+      .$n %>% sort(decreasing = T)
+    ks_boot[i] <- sad_ks(sad1 = sad, sad2 = sad_exp)
+  }
+  return(ks_boot)
+}
+
+#' Helper, Kolmogorov-Smirnov statistic for two empirical KDE distributions
+#'
+#' @param tad1 Kernel density estimated pdf of trait values in a community
+#' @param tad2 Kernel density estimated pdf (note: from and to arguments in stat::density() should be the same as for tad1)
+#'
+#' @returns Kolmogorov-Smirnov statistic
+#' @export
+#'
+tad_ks <- function(tad1, tad2){
+  c1 <- cumsum(tad1$y)
+  c1 <- c1 / max(c1)
+  c2 <- cumsum(tad2$y)
+  c2 <- c2 / max(c2)
+  return(max(abs(c1 - c2)))
+}
+
+#' Helper, permutational expectation of Kolmogorov-Smirnov statistic for an observed TAD and TAD from random sample of regional pool
+#'
+#' @param tad Kernel density estimated pdf (output of stats::density() function)
+#' @param mc A regional pool object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
+#' @param nperm Numeric, number of permutations.
+#'
+#' @returns Kolmogorov-Smirnov statistic for each permutation
+#'
+#' @importFrom stats density
+#' @export
+#'
+tad_ks_boot <- function(tad, mc, nperm = 100){
+  ks_boot <- numeric(nperm)
+  n <- tad$n
+  for (i in 1:nperm){
+    tad_exp <- draw_lcom(mc = mc, lh = FilterABM::init_envt(), nind = n) %>%
+      .$trait %>%
+      density(
+        from = min(tad$x),
+        to = max(tad$x)
+      )
+    ks_boot[i] <- tad_ks(tad1 = tad, tad2 = tad_exp)
+  }
+  return(ks_boot)
+}
+
 #' Run a simulation of environmental filtering on specified metacommunity, local habitat, and local community objects
 #'
 #' @description
 #' Requires an input of pre-defined metacommunity, local habitat, and local community objects, the two latter of which are iteratively modified to reflect changes caused by environmental filtering.
-#' Unlike \code{run_FilterABM()}, this function is not fully enclosed, but expects pre-initialized objects.
+#' This function is not fully enclosed, but expects pre-initialized input objects for regional pool, local habitat, and community.
 #' This allows running multiple simulations on identical input.
 #'
+#' The output is memory-moderate: intermediate results of simulation steps are discarded.
+#' Use \code{run_sim()} to preserve all intermediate steps.
 #'
-#' @param mc A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
+#' @param mc A regional pool object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
 #' @param lh A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).
 #' @param lc A local community object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).
 #'
@@ -26,46 +114,53 @@ rkde <- function(kde, n = 1) {
 #'
 #' @param progress_bar Logical, whether to show the progress bar for the simulation run; default to FALSE.
 #'
-#' @param age_crit Numeric; critical age at which half of the individuals die. Feeds into \code{draw_lcom()} and \code{dem()}.
-#' @param mass_crit Numeric; critical mass at which half of the individuals reproduce. Feeds into \code{draw_lcom()} and \code{dem()}.
-#'
 #' @param recruitment Non-negative double, recruitment rate (i.e., expectation of number of individuals recruited into local habitat per patch per time step). Feeds into \code{recruit()}.
 #'
 #' @param dispersal Non-negative numeric, dispersal rate per habitat patch, i.e., expectation of the number of individuals per patch that disperse to a neighboring patch. Feeds into \code{dispersal()}.
 #'
+#' @param reproduction Non-negative numeric; mass at which individuals reproduce. Feeds into \code{dem()}.
+#' @param expenditure Numeric; amount of body mass each individual needs to spend in order to survive one time step. Feeds into \code{dem()}.
+#'
 #' @param res_input Numeric, increment of the resource level within a time step. Feeds into \code{lh_input_res()}.
-#' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.
+#'
+#' @param intake Positive numeric, single-meal resource intake by an individual in an event of a successful feeding. Feeds into \code{forage()}.
 #'
 #' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
-#' If zero, local environmental conditions do not affect individual resource intake.
+#' If zero, local environmental conditions do not affect individual resource intake. Feeds into \code{forage()}.
 #' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
-#' If zero, trait differences among individuals do not affect resource intake.
+#' If zero, trait differences among individuals do not affect resource intake. Feeds into \code{forage()}.
 #'
-#' @returns A list of simulation parameters recorded at each step:
-#' distribution of resource across habitat patches ([[habitat]]),
-#' species area distribution of the local community ([[sad]]),
-#' KDE trait distribution ([[traits]]),
-#' and the total amount of resource consumed ([[consumed_resource]]).
+#' @returns A diagnostic named list with the following elements:
+#' [["mc"]] - input regional pool;
+#' [["lh"]] - input local habitat;
+#' [["params"]] - named vector, other simulation parameters;
+#' [["runtime"]] - time the simulation took, in minutes;
+#' [["extinct"]] - logical, whether the local community went extinct; if TRUE, the rest of the elements of the list are empty, otherwise, all metrics below are evaluated for the local community at the last time step;
+#' [["S"]] - number of species;
+#' [["nind"]] - number of individuals;
+#' [["sad"]] - species abundance distribution (SAD);
+#' [["sad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed SAD and a community of the same size randomly drawn from the regional pool;
+#' [["tad"]] - trait abundance distribution (TAD) as an output of kernel density estimation (stats::density());
+#' [["t_mean"]] - mean trait value;
+#' [["t_mean0"]] - mean trait value in a community of the same size randomly drawn from the regional pool;
+#' [["t_var"]] - trat variance;
+#' [["t_var0"]] - trat variance in a community of the same size randomly drawn from the regional pool;
+#' [["tad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed TAD and a community of the same size randomly drawn from the regional pool.
 #'
 #' @import progress
 #' @importFrom stats approx
 #'
 #' @export
 #'
-#' @examples
-#' mc = init_meta()
-#' lh = init_envt()
-#' lc = draw_lcom(mc = mc, lh = lh, nind = 100)
-#' run_sim(mc, lh, lc, nsteps = 10)
-#'
-run_sim <- function(mc, lh, lc,
-                    nsteps = 500,
-                    progress_bar = FALSE,
-                    age_crit = 10, mass_crit = 5,
-                    recruitment = 0.05,
-                    dispersal = 0.05,
-                    res_input = 10, R = 1000,
-                    clustering = 1, dispersion = 1){
+run_sim_ <- function(mc, lh, lc,
+                     nsteps = 500,
+                     progress_bar = FALSE,
+                     recruitment = 0.05,
+                     dispersal = 0.05,
+                     reproduction = 0.1, expenditure = 0.1,
+                     res_input = 10,
+                     intake = 1,
+                     clustering = 1, dispersion = 1){
 
   # formal checks
   if ((nsteps %% 1) != 0){
@@ -78,37 +173,12 @@ run_sim <- function(mc, lh, lc,
 
   # double check if lc is missing - not a big deal if it does
   if (missing(lc)){
-    lc <- draw_lcom(mc = mc, lh = lh, nind = 1, age_crit = age_crit, mass_crit = mass_crit)
+    warning("`lc` argument missing in `run_sim()`, substituted with default.")
+    lc <- draw_lcom(mc = mc, lh = lh, nind = 1)
   }
 
-  # initialize output
-  hab_patches <- lh$patch
-  mc_species <- mc$species
-  mc_traits <- seq(
-    from = unname(quantile(mc$trait, probs = 0) - (quantile(mc$trait, probs = 0.5) - quantile(mc$trait, probs = 0))),
-    to = unname(quantile(mc$trait, probs = 1) + (quantile(mc$trait, probs = 1) - quantile(mc$trait, probs = 0.5))),
-    length.out = 100
-  )
-
-  out_lh <- matrix(data = NA, nrow = nsteps + 1, ncol = length(hab_patches))
-  out_sad <- matrix(data = NA, nrow = nsteps + 1, ncol = length(mc_species))
-  out_traits <- matrix(data = NA, nrow = nsteps + 1, ncol = 100)
-  out_res_consumed <- numeric(nsteps)
-  trait_means <- numeric(nsteps)
-
-  out_lh[1, ] <- lh$res[sapply(hab_patches, function(j) which(lh$patch == j))]
-  sad <- lc %>%
-    group_by(.data$species) %>%
-    summarise(n = n()) %>%
-    ungroup()
-  out_sad[1, sad$species] <- sad$n
-  if (nrow(lc) > 1){
-    out_traits[1, ] <- approx(x = summary(lc)$trait_distribution$x, y = summary(lc)$trait_distribution$y, xout = mc_traits)$y
-  }else{
-    tmp <- rep(NA, 100)
-    tmp[which.min(abs(lc$trait[1] - mc_traits))] <- 1
-    out_traits[1, ] <- tmp
-  }
+  # start time
+  t1 <- Sys.time()
 
   # progress bar if asked for
   if (progress_bar){
@@ -129,105 +199,94 @@ run_sim <- function(mc, lh, lc,
 
     # recruitment
     lc <- recruit(lc = lc, mc = mc, lh = lh, recruitment = recruitment)
-    # advance age
-    lc <- adv_age(lc = lc)
     # demography
-    lc <- dem(lc = lc, mc = mc, age_crit = age_crit, mass_crit = mass_crit)
+    lc <- dem(lc = lc, mc = mc, reproduction = reproduction, expenditure = expenditure)
     # dispersal
     lc <- disperse(lc = lc, lh = lh, dispersal = dispersal)
+    # resource input
+    lh <- lh_input_res(lh = lh, res_input = res_input)
     # foraging
-    res_prior <- sum(lh$res) # save resource level prior to foraging
-    frg_out <- forage(lc = lc, lh = lh, R = R, clustering = clustering, dispersion = dispersion) # forage
+    res_prior <- sum(lh$res) # save resource level prior to processes
+    frg_out <- forage(lc = lc, lh = lh, intake = intake, clustering = clustering, dispersion = dispersion) # forage
     lc <- frg_out[["lc"]] # extract local community
     lh <- frg_out[["lh"]]
 
     # == END ==
-
-    # write output
-
-    out_lh[step + 1, ] <- lh$res[sapply(hab_patches, function(j) which(lh$patch == j))]
-    sad <- lc %>%
-      group_by(.data$species) %>%
-      summarise(n = n()) %>%
-      ungroup()
-    out_sad[step + 1, sad$species] <- sad$n
-    if (nrow(lc) > 1){
-      out_traits[step + 1, ] <- approx(x = summary(lc)$trait_distribution$x, y = summary(lc)$trait_distribution$y, xout = mc_traits)$y
-    }else{
-      tmp <- rep(NA, 100)
-      tmp[which.min(abs(lc$trait[1] - mc_traits))] <- 1
-      out_traits[step + 1, ] <- tmp
-      }
-    out_res_consumed[step] <- res_prior - sum(lh$res)
-    trait_means[step] <- mean(lc$trait)
-
-    # replenish habitat resource
-    lh <- lh_input_res(lh = lh, res_input = res_input)
+    t2 <- Sys.time()
 
   }
 
-  # out_lh[is.na(out_lh)] <- 0
-  # out_sad[is.na(out_sad)] <- 0
-  # out_traits[is.na(out_traits)] <- 0
-
-  return(
-    list("habitat" = out_lh,
-         "sad" = out_sad,
-         "traits" = out_traits,
-         "trait_means" = trait_means,
-         "consumed_resource" = out_res_consumed,
-         "coord" = list(
-           "lh" = hab_patches,
-           "spp" = mc_species,
-           "traits" = mc_traits
-         )
-      )
+  out <- list(
+    "mc" = mc,
+    "lh" = lh,
+    "params" = c(
+      "nsteps" = nsteps,
+      "recruitment" = recruitment,
+      "dispersal" = dispersal,
+      "reproduction" = reproduction,
+      "expenditure" = expenditure,
+      "res_input" = res_input,
+      "intake" = intake,
+      "clustering" = clustering,
+      "dispersion" = dispersion
+    ),
+    "runtime" = as.numeric(difftime(t2, t1, units = "m")),
+    "extinct" = nrow(lc) == 0,
+    "S" = NA,
+    "nind" = NA,
+    "sad" = NA,
+    "sad_ks" = NA,
+    "tad" = NA,
+    "t_mean" = NA,
+    "t_mean0" = NA,
+    "t_var" = NA,
+    "t_var0" = NA,
+    "tad_ks" = NA
   )
 
-}
+  if (!out$extinct){
 
-#' Plot a simulation output
-#'
-#' @param runsim An output of \code{run_sim()}.
-#'
-#' @returns A plot of simulation parameters with time steps.
-#'
-#' @export
-#'
-plot_run_sim <- function(runsim){
-  graphics.off()
-  par(mfrow = c(2, 2))
-  # habitat
-  p1 <- list()
-  p1$x <- 1:nrow(runsim$habitat) - 1
-  p1$y <- runsim$coord$lh
-  p1$z <- runsim$habitat
-  image(p1$x, p1$y, p1$z, xlab = "Time step", ylab = "Patch", main = "Resource per patch")
-  # resource consumption
-  runsim$consumed_resource %>% plot(type = "l", xlab = "Time step", ylab = "Resource consumed", main = "Resource consumption")
-  # species abundance distribution
-  p2 <- list()
-  p2$x <- 1:nrow(runsim$sad) - 1
-  p2$y <- runsim$coord$spp
-  p2$z <- runsim$sad
-  image(p2$x, p2$y, p2$z, xlab = "Time step", ylab = "Species", main = "Species abundances")
-  # trait distribution
-  p3 <- list()
-  p3$x <- 1:nrow(runsim$traits) - 1
-  p3$y <- runsim$coord$traits
-  p3$z <- runsim$traits
-  image(p3$x, p3$y, p3$z, xlab = "Time step", ylab = "Trait value", main = "Trait distribution")
-  lines(x = 2:nrow(runsim$traits) - 1, y = runsim$trait_means)
+    out$S <- lc$species %>% unique() %>% length()
+
+    out$nind <- nrow(lc)
+
+    out$sad <- lc %>%
+      group_by(species) %>%
+      summarise(n = n()) %>%
+      .$n %>% sort(decreasing = T)
+
+    out$sad_ks <- median(sad_ks_boot(out$sad, out$mc))
+
+    out$tad <- density(
+      lc$trait,
+      # KDE for plus/minus 3 sigmas from the most extreme trait values
+      from = min(min(mc$trait), min(lc$trait)) - 3*(max(mc$trait_sd)^0.5),
+      to = max(max(mc$trait), max(lc$trait)) + 3*(max(mc$trait_sd)^0.5)
+    )
+
+    out$t_mean <- mean(lc$trait)
+    out$t_var <- var(lc$trait)
+
+    lc_tmp <- draw_lcom(mc = mc, lh = lh, nind = nrow(lc))
+    out$t_mean0 <- mean(lc_tmp$trait)
+    out$t_var0 <- var(lc_tmp$trait)
+
+    out$tad_ks <- median(tad_ks_boot(out$tad, out$mc))
+
+  }
+
+  return(out)
+
 }
 
 #' [Long output] Run a simulation of environmental filtering on specified metacommunity, local habitat, and local community objects
 #'
 #' @description
 #' Requires an input of pre-defined metacommunity, local habitat, and local community objects, the two latter of which are iteratively modified to reflect changes caused by environmental filtering.
-#' Unlike \code{run_FilterABM()}, this function is not fully enclosed, but expects pre-initialized objects.
+#' This function is not fully enclosed, but expects pre-initialized objects.
 #' This allows running multiple simulations on identical input.
 #'
-#' Unlike \code{run_sim()}, it saves the data from each time step, which does provide more insight on trait distribution across individuals with time, but is more memory-intensive.
+#' Unlike \code{run_sim_()}, it saves the data from each time step, which does provide more insight on trait distribution across individuals with time, but is more memory-intensive.
 #'
 #'
 #' @param mc A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
@@ -238,15 +297,16 @@ plot_run_sim <- function(runsim){
 #'
 #' @param progress_bar Logical, whether to show the progress bar for the simulation run; default to FALSE.
 #'
-#' @param age_crit Numeric; critical age at which half of the individuals die. Feeds into \code{draw_lcom()} and \code{dem()}.
-#' @param mass_crit Numeric; critical mass at which half of the individuals reproduce. Feeds into \code{draw_lcom()} and \code{dem()}.
-#'
 #' @param recruitment Non-negative double, recruitment rate (i.e., expectation of number of individuals recruited into local habitat per patch per time step). Feeds into \code{recruit()}.
 #'
 #' @param dispersal Non-negative numeric, dispersal rate per habitat patch, i.e., expectation of the number of individuals per patch that disperse to a neighboring patch. Feeds into \code{dispersal()}.
 #'
+#' @param reproduction Non-negative numeric; mass at which individuals reproduce. Feeds into \code{dem()}.
+#' @param expenditure Numeric; amount of body mass each individual needs to spend in order to survive one time step. Feeds into \code{dem()}.
+#'
 #' @param res_input Numeric, increment of the resource level within a time step. Feeds into \code{lh_input_res()}.
-#' @param R Numeric, resource level at which all individuals within a community successfully consume the resource (i.e., probability of resource consumption equals one). Feeds into \code{forage()}.
+#'
+#' @param intake Positive numeric, single-meal resource intake by an individual in an event of a successful feeding. Feeds into \code{forage()}.
 #'
 #' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
 #' If zero, local environmental conditions do not affect individual resource intake. Feeds into \code{forage()}.
@@ -255,19 +315,21 @@ plot_run_sim <- function(runsim){
 #'
 #' @returns A list with a quasi-"FilterABM_lc" local community object that has an additional column for time step ([["lcs"]]).
 #' Additionally, habitat history at each time step ([["habitat"]]), and the total resource consumed per time step ([["consumed_resource"]]).
+#' Input arguments included in the output as well.
 #'
 #' @import progress
 #'
 #' @export
 #'
-run_sim_ <- function(mc, lh, lc,
-                    nsteps = 500,
-                    progress_bar = FALSE,
-                    age_crit = 10, mass_crit = 5,
-                    recruitment = 0.05,
-                    dispersal = 0.05,
-                    res_input = 10, R = 1000,
-                    clustering = 1, dispersion = 1){
+run_sim <- function(mc, lh, lc,
+                     nsteps = 500,
+                     progress_bar = FALSE,
+                     recruitment = 0.05,
+                     dispersal = 0.05,
+                     reproduction = 0.1, expenditure = 0.1,
+                     res_input = 10,
+                     intake = 1,
+                     clustering = 1, dispersion = 1){
 
   # formal checks
   if ((nsteps %% 1) != 0){
@@ -280,7 +342,8 @@ run_sim_ <- function(mc, lh, lc,
 
   # double check if lc is missing - not a big deal if it does
   if (missing(lc)){
-    lc <- draw_lcom(mc = mc, lh = lh, nind = 1, age_crit = age_crit, mass_crit = mass_crit)
+    warning("`lc` argument missing in `run_sim()`, substituted with default.")
+    lc <- draw_lcom(mc = mc, lh = lh, nind = 1)
   }
 
   # initialize additional output
@@ -309,15 +372,15 @@ run_sim_ <- function(mc, lh, lc,
 
     # recruitment
     lc <- recruit(lc = lc, mc = mc, lh = lh, recruitment = recruitment)
-    # advance age
-    lc <- adv_age(lc = lc)
     # demography
-    lc <- dem(lc = lc, mc = mc, age_crit = age_crit, mass_crit = mass_crit)
+    lc <- dem(lc = lc, mc = mc, reproduction = reproduction, expenditure = expenditure)
     # dispersal
     lc <- disperse(lc = lc, lh = lh, dispersal = dispersal)
+    # resource input
+    lh <- lh_input_res(lh = lh, res_input = res_input)
     # foraging
-    res_prior <- sum(lh$res) # save resource level prior to foraging
-    frg_out <- forage(lc = lc, lh = lh, R = R, clustering = clustering, dispersion = dispersion) # forage
+    res_prior <- sum(lh$res) # save resource level prior to processes
+    frg_out <- forage(lc = lc, lh = lh, intake = intake, clustering = clustering, dispersion = dispersion) # forage
     lc <- frg_out[["lc"]] # extract local community
     lh <- frg_out[["lh"]]
 
@@ -330,36 +393,127 @@ run_sim_ <- function(mc, lh, lc,
     out_lh[step + 1, ] <- lh$res[sapply(hab_patches, function(j) which(lh$patch == j))]
     out_res_consumed[step] <- res_prior - sum(lh$res)
 
-    # replenish habitat resource
-    lh <- lh_input_res(lh = lh, res_input = res_input)
-
   }
 
-  return(
-    list("lcs" = lc_out,
-         "habitat" = out_lh,
-         "consumed_resource" = out_res_consumed,
-         "coord" = list(
-           "lh" = hab_patches
-         )
-    )
+  rs <- list("lcs" = lc_out,
+             "habitat" = out_lh,
+             "consumed_resource" = out_res_consumed,
+             "coord" = list(
+               "lh" = hab_patches
+             ),
+             "mc" = mc,
+             "lh" = lh,
+             "params" = c(
+               "nsteps" = nsteps,
+               "recruitment" = recruitment,
+               "dispersal" = dispersal,
+               "reproduction" = reproduction,
+               "expenditure" = expenditure,
+               "res_input" = res_input,
+               "intake" = intake,
+               "clustering" = clustering,
+               "dispersion" = dispersion
+             )
   )
+
+  rs <- structure(rs, class = c("FilterABM_runsim", class(rs)))
+
+  return(rs)
 
 }
 
-#' Plot a simulation output (for long output)
+#' Diagnostic plots for a simulation output (for long output)
 #'
-#' @param runsim An output of \code{run_sim_()}.
-#'
-#' @returns A plot of simulation parameters with time steps.
+#' @param x An output of \code{run_sim_()}.
+#' @param y Parameter two.
+#' @param ... Arguments passed to or from other methods.
 #'
 #' @import ggplot2
-#' @export
+#' @importFrom gridExtra grid.arrange
 #'
-plot_run_sim_ <- function(runsim){
-  ggplot2::ggplot() +
-    ggplot2::geom_bin_2d(aes(x = .data$timestep, y = .data$trait), data = runsim$lcs) +
+#' @exportS3Method base::plot
+#'
+plot.FilterABM_runsim <- function(x, y, ...){
+
+  runsim <- x
+
+  p1 <- ggplot2::ggplot() +
+    ggplot2::geom_bin_2d(aes(x = timestep, y = trait), data = runsim$lcs) +
     ggplot2::scale_fill_gradientn(colours = terrain.colors(10)) +
-    ggplot2::geom_line(aes(x = .data$timestep, y = .data$trait), data = runsim$lcs %>% group_by(.data$timestep) %>% summarise(trait = mean(.data$trait))) +
-    ggplot2::xlab("Time step") + ggplot2::ylab("Trait") + ggplot2::theme(legend.position="none")
+    ggplot2::geom_line(aes(x = timestep, y = trait), data = runsim$lcs %>% group_by(timestep) %>% summarise(trait = mean(trait))) +
+    ggplot2::xlab("Time step") + ggplot2::ylab("Trait") + ggplot2::theme(legend.position="none") +
+    ggplot2::geom_hline(yintercept = mean(runsim$mc$trait), linetype = "dashed", col = "red") +
+    ggplot2::geom_hline(yintercept = mean(runsim$lh$env), linetype = "dotted", col = "blue")
+
+  p2 <- runsim$lcs %>%
+    group_by(timestep, patch) %>% summarise(n = n()) %>%
+    group_by(timestep) %>% summarise(n = mean(n)) %>%
+    ggplot(aes(x = timestep, y = n)) + geom_line() + ylab("Ind. / patch") + xlab("Time step")
+
+  p3 <- runsim$lcs %>% group_by(timestep) %>% summarise(w = mean(mass)) %>%
+    ggplot(aes(x = timestep, y = w)) + geom_line() + ylab("Mean mass") + xlab("Time step")
+
+  p4 <- tibble(timestep = 1:(nrow(runsim$habitat)-1),
+               res = runsim$habitat[-1,] %>% apply(1, mean)) %>%
+    ggplot(aes(x = timestep, y = res)) +
+    geom_line() +
+    ylim(0, NA) +
+    xlab("Time step") + ylab("Available res / patch")
+
+  p5 <-tibble(timestep = 1:length(runsim$consumed_resource),
+              cres = runsim$consumed_resource/length(runsim$coord$lh)) %>%
+    ggplot(aes(x = timestep, y = cres)) +
+    geom_line() +
+    ylim(0, NA) +
+    xlab("Time step") + ylab("Consumed res / patch")
+
+  finish <- runsim$lcs %>%
+    filter(timestep == max(timestep)) %>%
+    select(-timestep)
+
+  p6 <- ggplot() +
+    geom_density(data = finish,
+                 mapping = aes(x = trait, ggplot2::after_stat(count), fill = factor(species)),
+                 position = "stack", show.legend = F, na.rm = F) +
+    theme_minimal() +
+    geom_density(data = draw_lcom(
+      mc = runsim$mc,
+      lh = runsim$lh,
+      nind = nrow(finish)),
+                 mapping = aes(x = trait, ggplot2::after_stat(count)),
+                 show.legend = F, linetype = "dotted") +
+    xlab("Trait value") + ggplot2::ylab("Individuals")
+
+  finish_sad <- finish %>%
+    group_by(species) %>%
+    summarize(n = n())
+
+  p7 <- ggplot() +
+    geom_point(data = draw_lcom(
+      mc = runsim$mc,
+      lh = runsim$lh,
+      nind = nrow(finish)) %>%
+        group_by(species) %>%
+        summarize(abundance = n()) %>%
+        arrange(desc(abundance)) %>%
+        rowid_to_column(var = "rank"),
+      aes(x = rank, y = abundance), color = "gray") +
+    geom_line(data = tibble(
+      rank = 1:nrow(finish_sad),
+      abundance = sort(finish_sad$n, decreasing = TRUE)
+    ), aes(x = rank, y = abundance), lwd = 2) +
+    scale_y_log10() +
+    theme_minimal() +
+    xlab("Rank") +
+    ylab("log-Abundance")
+
+  gridExtra::grid.arrange(p1, p2, p3, p4, p5, p6, p7,
+                          layout_matrix = matrix(
+                            c(1, 1, 2, 3,
+                              1, 1, 4, 5,
+                              6, 6, 7, 7,
+                              6, 6, 7, 7), nrow = 4, byrow = T
+                          )
+  )
+
 }

@@ -44,10 +44,6 @@ pred_logit <- function(p, crit){
 #'
 #' @param nind Positive integer, a number of individuals to draw from the metacommunity.
 #'
-#' @param age_crit Numeric; critical age at which half of the individuals die.
-#'
-#' @param mass_crit Numeric; critical mass at which half of the individuals reproduce.
-#'
 #' @returns An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).
 #'
 #' @importFrom stats rexp
@@ -56,15 +52,15 @@ pred_logit <- function(p, crit){
 #' @export
 #'
 #' @examples
-#' mc = init_meta()
-#' lh = init_envt()
-#' draw_lcom(mc = mc, lh = lh)
+#' mc1 = init_meta()
+#' lh1 = init_envt()
+#' draw_lcom(mc = mc1, lh = lh1)
 #'
-draw_lcom <- function(mc, lh, nind = 1, age_crit = 10, mass_crit = 5){
+draw_lcom <- function(mc, lh, nind = 1){
 
   if (nind < 1){
     stop(
-      paste0("`draw_lcom` must draw a positive number of individuals, however, `nind` was set to ", nind),
+      paste0("`draw_lcom()` must draw a positive number of individuals, however, `nind` was set to ", nind),
       call. = FALSE
     )
   }
@@ -74,7 +70,7 @@ draw_lcom <- function(mc, lh, nind = 1, age_crit = 10, mass_crit = 5){
   }
 
   if (is.na(nind)){
-    stop("Make sure that `nind` in `draw_lcom` is an integer.")
+    stop("Make sure that `nind` in `draw_lcom()` is an integer.")
   }
 
   lucky <- mc[sample(1:nrow(mc), size = nind, replace = T, prob = mc$abundance), ]
@@ -86,10 +82,7 @@ draw_lcom <- function(mc, lh, nind = 1, age_crit = 10, mass_crit = 5){
   lucky <- lucky %>%
     mutate(
       trait = new_trait,
-      age = 1,
       mass = 1,
-      lifespan = rexp(nind, 1/age_crit) %>% round(),
-      repmass = FilterABM::pred_logit(p = runif(nind, 0.1, 0.9), crit = mass_crit),
       patch = sample(x = unique(lh$patch), size = nind, replace = TRUE)
     )
 
@@ -128,10 +121,10 @@ draw_lcom <- function(mc, lh, nind = 1, age_crit = 10, mass_crit = 5){
 #' @export
 #'
 #' @examples
-#' mc = init_meta()
-#' lh = init_envt()
-#' lc = draw_lcom(mc = mc, lh = lh)
-#' recruit(lc = lc, mc = mc, lh = lh)
+#' mc1 = init_meta()
+#' lh1 = init_envt()
+#' lc1 = draw_lcom(mc = mc1, lh = lh1)
+#' recruit(lc = lc1, mc = mc1, lh = lh1)
 #'
 recruit <- function(lc, mc, lh, recruitment = 0, ...){
 

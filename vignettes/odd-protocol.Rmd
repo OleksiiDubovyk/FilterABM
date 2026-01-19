@@ -6,7 +6,7 @@ output:
     number_sections: true
 always_allow_html: true
 vignette: >
-  %\VignetteIndexEntry{odd-protocol}
+  %\VignetteIndexEntry{Model description following the overview-design-details (ODD) protocol}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
 options(rmarkdown.html_vignette.check_title = FALSE)
 ```
 
-```{r setup}
+```{r setup, echo=F, message=FALSE}
 # package-specific
 library(dplyr)
 library(tibble)

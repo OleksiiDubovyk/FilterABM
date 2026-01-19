@@ -56,15 +56,6 @@ validate_FilterABM_mc <- function(x){
     )
   }
 
-  if (!is.integer(vals$species)){
-    warning(
-      paste0("`species` in `FilterABM_mc` tibble must be integer, not ", typeof(vals$species), ". Rounding up values."),
-      call. = FALSE
-    )
-    x$species <- as.integer(x$species)
-    vals <- unclass(x)
-  }
-
   if (length(vals$species) != length(unique(vals$species))){
     reps <- unique(vals$species[duplicated(vals$species)])
     stop(
@@ -140,7 +131,7 @@ FilterABM_mc <- function(x, val_in = TRUE, val_out = TRUE){
     y <- bind_rows(y, x)
   }
 
-  y <- y %>% select(.data$species, .data$trait, .data$abundance, .data$trait_sd)
+  y <- y %>% select(species, trait, abundance, trait_sd)
 
   y <- structure(y, class = c("FilterABM_mc", class(y)))
 
@@ -169,44 +160,52 @@ summary.FilterABM_mc <- function(object, ...){
 #' @param y Parameter two.
 #' @param ... Arguments passed to or from other methods.
 #'
-#' @import graphics
+#' @import ggplot2
+#' @importFrom gridExtra grid.arrange
 #' @importFrom stats density
 #'
 #' @exportS3Method base::plot
 #'
 plot.FilterABM_mc <- function(x, y, ...){
-  graphics.off()
-  object <- x
-  par(mfrow = c(2, 2))
-  # Rank-abundance  (Whittaker) plot
-  plot(x = sort(object$abundance, decreasing = TRUE), log = "y", pch = 16, xlab = "Species", ylab = "log-Abundance", main = "Rank-abundance SAD plot")
-  # log Preston plot
-  log(object$abundance, 10) %>% density() %>% plot(xaxt = "n", xlab = "log-Species abundance", main = "Preston SAD plot")
-  max_labun <- max(log(object$abundance, 10)) %>% round()
-  min_labun <- min(log(object$abundance, 10)) %>% round()
-  axis(
-    side = 1,
-    at = seq(from = min_labun, to = max_labun, by = 1),
-    labels = lapply(
-      seq(from = min_labun, to = max_labun, by = 1),
-      function(x) str2lang(paste0("10^", x))
-    ) %>% as.expression()
-  )
-  polygon(log(object$abundance, 10) %>% density(), col = "blue")
-  # TAD plot
-  trait_density <- (
-    rep(x = object$trait, times = object$abundance) +
-      mapply(
-        FUN = function(a, b) rnorm(n = a, mean = 0, sd = b),
-        object$abundance, object$trait_sd
-      ) %>% unlist()
-  )%>%
-    density()
-  # trait_density <- density(x = object$trait, weights = object$abundance) # won't work, no variation for weights
-  plot(trait_density, main = "Trait abundance distribution", xlab = "Trait value", ylab = "Dens. of ind.")
-  polygon(trait_density, col = "purple")
-  # Traits by species
-  trait_bysp <- density(object$trait)
-  plot(trait_bysp, main = "Traits across species", xlab = "Trait value", ylab = "Dens. of species")
-  polygon(trait_bysp, col = "lightblue")
+
+  p1 <- tibble(
+    rank = 1:nrow(x),
+    abundance = sort(x$abundance, decreasing = TRUE)
+  ) %>%
+    ggplot(aes(x = rank, y = abundance)) +
+    geom_line(lwd = 2) +
+    scale_y_log10() +
+    theme_minimal() +
+    xlab("Rank") +
+    ylab("log-Abundance") +
+    labs(title = "Rank-abundance SAD plot")
+
+  p2 <- tibble(
+    logabun = x$abundance
+  ) %>%
+    ggplot(aes(x = logabun)) +
+    geom_density(fill = "blue") +
+    scale_x_log10() +
+    theme_minimal() +
+    xlab("log-Species abundance") +
+    ylab("Density") +
+    labs(title = "Preston SAD plot")
+
+  p3 <- x %>%
+    ggplot(aes(x = trait)) +
+    geom_density(fill = "purple", aes(weight = abundance), bw = 1/nrow(x)) +
+    theme_minimal() +
+    xlab("Trait value") +
+    ylab("Individuals") +
+    labs(title = "Trait abundance distribution")
+
+  p4 <- x %>%
+    ggplot(aes(x = trait)) +
+    geom_density(fill = "lightblue") +
+    theme_minimal() +
+    xlab("Trait value") +
+    ylab("Species") +
+    labs(title = "Trait across species")
+
+  gridExtra::grid.arrange(p1, p2, p3, p4, nrow = 2)
 }

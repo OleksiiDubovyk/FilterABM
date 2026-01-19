@@ -44,25 +44,24 @@ jump <- function(x){
 #' @export
 #'
 #' @examples
-#' mc = init_meta()
-#' lh = init_envt()
-#' lc = draw_lcom(mc = mc, lh = lh)
-#' lc = recruit(lc = lc, mc = mc, lh = lh)
-#' lc = adv_age(lc = lc)
-#' lc = dem(lc = lc, mc = mc)
-#' disperse(lc = lc, lh = lh, dispersal = 10)
+#' mc1 = init_meta()
+#' lh1 = init_envt()
+#' lc1 = draw_lcom(mc = mc1, lh = lh1)
+#' lc1 = recruit(lc = lc1, mc = mc1, lh = lh1)
+#' lc1 = dem(lc = lc1, mc = mc1)
+#' disperse(lc = lc1, lh = lh1, dispersal = 10)
 disperse <- function(lc, lh, dispersal = 1){
 
   if (!is.numeric(dispersal)){
     stop(
-      paste0("The `dispersal` parameter in `disperse` must be numeric, however, ", typeof(dispersal), " found."),
+      paste0("The `dispersal` parameter in `disperse()` must be numeric, however, ", typeof(dispersal), " found."),
       call. = FALSE
     )
   }
 
   if (dispersal < 0){
     warning(
-      "The `dispersal` parameter in `disperse` is negative, set to zero."
+      "The `dispersal` parameter in `disperse()` is negative, set to zero."
     )
     dispersal <- 0
   }
@@ -82,7 +81,7 @@ disperse <- function(lc, lh, dispersal = 1){
     stayed <- lc[-dispersed_idx,]
 
     dispersed <- dispersed %>%
-      mutate(patch = as.integer(FilterABM::jump(.data$patch)))
+      mutate(patch = as.integer(FilterABM::jump(patch)))
 
     bind_rows(
       stayed,

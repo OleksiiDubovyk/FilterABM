@@ -53,10 +53,10 @@ init_meta <- function(M = 120, env_mean_mc = 0, env_sd_mc = 1, cauchy = 1, trait
   regpool_spp <- tibble(trait = spp_trait_means,
                         abundance = abundances)
   regpool_spp <- regpool_spp %>%
-    arrange(.data$trait) %>%
+    arrange(trait) %>%
     rowid_to_column(var = "species") %>%
     mutate(trait_sd = trait_sds) %>%
-    mutate(species = as.integer(.data$species),
-           abundance = as.integer(.data$abundance))
+    mutate(species = as.integer(species),
+           abundance = as.integer(abundance))
   FilterABM::FilterABM_mc(regpool_spp)
 }
