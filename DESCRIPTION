@@ -34,6 +34,6 @@ Suggests:
     magrittr,
     kableExtra,
     tidyverse,
-    SobolSequence
+    sensobol
 Config/testthat/edition: 3
 VignetteBuilder: knitr

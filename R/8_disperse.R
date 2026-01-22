@@ -5,22 +5,23 @@
 #' The min value in the vector can only be added one, and the max value can only be subtracted from.
 #'
 #' @param x Integer vector
+#' @param domain All possible values x can take
 #'
 #' @returns Vector of the same length as input vector
 #'
 #' @export
 #'
-jump <- function(x){
+jump <- function(x, domain){
   add <- sapply(x, function(y){
-    if (y == min(x)){
+    if (y == min(domain)){
       1
-    }else if (y == max(x)){
+    }else if (y == max(domain)){
       -1
     }else{
       sample(x = c(-1, 1), size = 1)
     }
   })
-  x + add
+  return(x + add)
 }
 
 #' Simulate patch-to-patch dispersal
@@ -81,7 +82,7 @@ disperse <- function(lc, lh, dispersal = 1){
     stayed <- lc[-dispersed_idx,]
 
     dispersed <- dispersed %>%
-      mutate(patch = as.integer(FilterABM::jump(patch)))
+      mutate(patch = as.integer(FilterABM::jump(patch, domain = unique(lh$patch))))
 
     bind_rows(
       stayed,

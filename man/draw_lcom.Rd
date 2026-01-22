@@ -4,7 +4,7 @@
 \alias{draw_lcom}
 \title{Draw individual(s) from the metacommunity}
 \usage{
-draw_lcom(mc, lh, nind = 1)
+draw_lcom(mc, lh, nind = 1, new_mass = 1)
 }
 \arguments{
 \item{mc}{A metacommunity object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).}
@@ -12,6 +12,8 @@ draw_lcom(mc, lh, nind = 1)
 \item{lh}{A local habitat object of class "FilterABM_lh"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lh}).}
 
 \item{nind}{Positive integer, a number of individuals to draw from the metacommunity.}
+
+\item{new_mass}{Positive numeric, the mass of newly recruited individuals.}
 }
 \value{
 An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).

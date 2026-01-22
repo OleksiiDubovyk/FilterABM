@@ -201,6 +201,7 @@ run_sim_ <- function(mc, lh, lc,
     lc <- recruit(lc = lc, mc = mc, lh = lh, recruitment = recruitment)
     # demography
     lc <- dem(lc = lc, mc = mc, reproduction = reproduction, expenditure = expenditure)
+    if (nrow(lc) == 0) break
     # dispersal
     lc <- disperse(lc = lc, lh = lh, dispersal = dispersal)
     # resource input
@@ -209,6 +210,7 @@ run_sim_ <- function(mc, lh, lc,
     res_prior <- sum(lh$res) # save resource level prior to processes
     frg_out <- forage(lc = lc, lh = lh, intake = intake, clustering = clustering, dispersion = dispersion) # forage
     lc <- frg_out[["lc"]] # extract local community
+    if (nrow(lc) == 0) break
     lh <- frg_out[["lh"]]
 
     # == END ==
@@ -277,6 +279,89 @@ run_sim_ <- function(mc, lh, lc,
 
   return(out)
 
+}
+
+#' Contained simulation run
+#'
+#' @param nsteps Positive integer, number of simulation time steps.
+#' @param progress_bar Logical, whether to show the progress bar for the simulation run; default to FALSE.
+#'
+#' @param M Integer, species richness within metacommunity, positive integer.
+#' @param env_mean_mc Numeric, mean environmental factor value within the extent of a metacommunity.
+#' @param env_sd_mc Non-negative numeric, variation of environmental factor value within the extent of a metacommunity.
+#' @param cauchy Non-negative numeric, delta parameter in Cauchy function used to connect species' trait values and log-abundances.
+#' @param trait_sds Non-negative numeric, intraspecific trait variation; either a single value if same for all species, or a M-length vector.
+#' @param max_abun Numeric, the maximum abundance allowed for the most abundant species in the metacommunity.
+#'
+#' @param npatch Positive integer, number of patches in the environment.
+#' @param res Non-negative numeric, available resource level within each patch of the local habitat.
+#' @param gradient Character, the rule by which patches get their values of env, either:
+#' \code{gradient = "random"} - default value, env is an independent random variable drawn from N(env_mean, env_sd),
+#' \code{gradient = "linear"} - env changes linearly from patch number 1 to patch number \code{npatch} with min and max drawn from 95% bound of N(env_mean, env_sd),
+#' \code{gradient = "correlated"} - environmental factor is correlated with patch number with correlation coefficient equal \code{rho}, or
+#' \code{gradient = "clustered"} - for K clusters, there are linearly distributed local env_means and small env_sd.
+#' @param K Positive integer, number of clusters if \code{gradient = "clustered"}.
+#' @param env_mean_lh Numeric, mean value. of the environmental factor across all habitat patches.
+#' @param env_sd_lh Positive numeric, variation of the environmental factor across all habitat patches.
+#' @param rho Positive numeric between \code{0} and \code{1}, correlation coefficient between patch number and environmental factor when \code{gradient = "correlated"}.
+#'
+#' @param nind0 Positive integer, community size at simulation initialization.
+#'
+#' @param recruitment Non-negative double, recruitment rate (i.e., expectation of number of individuals recruited into local habitat per patch per time step). Feeds into \code{recruit()}.
+#' @param dispersal Non-negative numeric, dispersal rate per habitat patch, i.e., expectation of the number of individuals per patch that disperse to a neighboring patch. Feeds into \code{dispersal()}.
+#' @param reproduction Non-negative numeric; mass at which individuals reproduce. Feeds into \code{dem()}.
+#' @param expenditure Numeric; amount of body mass each individual needs to spend in order to survive one time step. Feeds into \code{dem()}.
+#' @param res_input Numeric, increment of the resource level within a time step. Feeds into \code{lh_input_res()}.
+#' @param intake Positive numeric, single-meal resource intake by an individual in an event of a successful feeding. Feeds into \code{forage()}.
+#' @param clustering Numeric, effect of niche clustering on probability of competition (between 0 and 1). Default to one.
+#' If zero, local environmental conditions do not affect individual resource intake. Feeds into \code{forage()}.
+#' @param dispersion Numeric, effect of niche dispersion on probability of trait filtering by the environment (between 0 and 1). Default to one.
+#' If zero, trait differences among individuals do not affect resource intake. Feeds into \code{forage()}.
+#'
+#' @returns Simulation output from \code{run_sim_()}.
+#' @export
+crun_sim_ <- function(nsteps = 500,
+                      progress_bar = FALSE,
+                      M = 120, env_mean_mc = 0, env_sd_mc = 1, cauchy = 1, trait_sds = 0, max_abun = 1e6,
+                      npatch = 10, res = 1000, gradient = "random", K = 3, env_mean_lh = 0, env_sd_lh = 25, rho = 0.75,
+                      nind0 = 1000,
+                      recruitment = 0.05,
+                      dispersal = 0.05,
+                      reproduction = 0.1, expenditure = 0.1,
+                      res_input = 10,
+                      intake = 1,
+                      clustering = 1, dispersion = 1){
+
+  mc1 <- init_meta(M = M,
+                   env_mean_mc = env_mean_mc,
+                   env_sd_mc = env_sd_mc,
+                   cauchy = cauchy,
+                   trait_sds = trait_sds,
+                   max_abun = max_abun)
+  lh1 <- init_envt(npatch = npatch,
+                   res = npatch,
+                   gradient = gradient,
+                   K = K,
+                   env_mean_lh = env_mean_lh,
+                   env_sd_lh = env_sd_lh,
+                   rho = rho)
+  lc1 <- draw_lcom(mc = mc1,
+                   lh = lh1,
+                   nind = nind0,
+                   new_mass = expenditure*1.1)
+  run_sim_(mc = mc1,
+           lh = lh1,
+           lc = lc1,
+           nsteps = nsteps,
+           progress_bar = progress_bar,
+           recruitment = recruitment,
+           dispersal = dispersal,
+           reproduction = reproduction,
+           expenditure = expenditure,
+           res_input = res_input,
+           intake = intake,
+           clustering = clustering,
+           dispersion = dispersion)
 }
 
 #' [Long output] Run a simulation of environmental filtering on specified metacommunity, local habitat, and local community objects
@@ -374,6 +459,7 @@ run_sim <- function(mc, lh, lc,
     lc <- recruit(lc = lc, mc = mc, lh = lh, recruitment = recruitment)
     # demography
     lc <- dem(lc = lc, mc = mc, reproduction = reproduction, expenditure = expenditure)
+    if (nrow(lc) == 0) break
     # dispersal
     lc <- disperse(lc = lc, lh = lh, dispersal = dispersal)
     # resource input
@@ -382,6 +468,7 @@ run_sim <- function(mc, lh, lc,
     res_prior <- sum(lh$res) # save resource level prior to processes
     frg_out <- forage(lc = lc, lh = lh, intake = intake, clustering = clustering, dispersion = dispersion) # forage
     lc <- frg_out[["lc"]] # extract local community
+    if (nrow(lc) == 0) break
     lh <- frg_out[["lh"]]
 
     # == END ==

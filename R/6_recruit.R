@@ -44,6 +44,8 @@ pred_logit <- function(p, crit){
 #'
 #' @param nind Positive integer, a number of individuals to draw from the metacommunity.
 #'
+#' @param new_mass Positive numeric, the mass of newly recruited individuals.
+#'
 #' @returns An object of class "FilterABM_lc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_lc}).
 #'
 #' @importFrom stats rexp
@@ -56,7 +58,7 @@ pred_logit <- function(p, crit){
 #' lh1 = init_envt()
 #' draw_lcom(mc = mc1, lh = lh1)
 #'
-draw_lcom <- function(mc, lh, nind = 1){
+draw_lcom <- function(mc, lh, nind = 1, new_mass = 1){
 
   if (nind < 1){
     stop(
@@ -82,7 +84,7 @@ draw_lcom <- function(mc, lh, nind = 1){
   lucky <- lucky %>%
     mutate(
       trait = new_trait,
-      mass = 1,
+      mass = new_mass,
       patch = sample(x = unique(lh$patch), size = nind, replace = TRUE)
     )
 

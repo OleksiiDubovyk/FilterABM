@@ -4,10 +4,12 @@
 \alias{jump}
 \title{Helper function, randomly jump values in a vector}
 \usage{
-jump(x)
+jump(x, domain)
 }
 \arguments{
 \item{x}{Integer vector}
+
+\item{domain}{All possible values x can take}
 }
 \value{
 Vector of the same length as input vector

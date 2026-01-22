@@ -17,154 +17,63 @@ knitr::opts_chunk$set(
 ```{r setup}
 version
 library(tidyverse)
-library(SobolSequence)
+library(sensobol)
 library(FilterABM)
 ```
 
 # Parameter hypercube boundaries
 
-## Parameter selection
+FilterABM simulations are governed by the total of 19 parameters, excluding spatial configuration of local habitat. In particular, `crun_sim_()` function takes the following parameters:
 
-First, we need to identify the parameters of interest in the model of environmental filtering. FilterABM operates on total 16 parameters: regional pool initialization is governed by 6 parameters, local habitat -- by 3 parameters and spatial configuration type, simulation parameters -- by 7 parameters. 
-The code implementation has some more arguments on top of that, for example, regulating the relative strength of niche partitioning:
+- **regional pool** is initialized by regional species richness (`M`), mean trait value across taxa (`env_mean_mc`), trait variation across taxa (`env_sd_mc`), shape parameter of the Cauchy function that maps species abundances through their traits (`cauchy`), interspecific trait variation (`trait_sds`), and abundance of the most common species (`max_abun`);
 
-- `init_meta()` has 6 arguments,
+- **local habitat** is initialized as a function of the number of habitat patches (`npatch`), initial resource available (`res`), environmental factor across-patches mean (`env_mean_lh`), and variation (`env_sd_lh`);
 
-- `init_envt()` has 4 arguments and 2 additional arguments depending on spatial configuration selected,
+- **initial local community** that reflects a random sample from the regional pool with a set number of individuals (`nind0`);
 
-- `draw_lcom()` has 3 arguments that affect the simulation directly,
+- and the **simulation run** that goes over the following steps:
 
-- `run_sim()` has 9 arguments that affect the simulation directly, and includes the following functions with their own parameters:
-
-  - `recruit()` with 1 important argument,
+  - **recruitment** of new individuals from the regional pool wherein a set number of new individuals is drawn into each patch (`recruitment``);
   
-  - `adv_age()` with no important arguments,
+  - **geographical processes** of mortality and reproduction that are governed by the threshold body mass at reproduction (`reproduction`) and biomass expenditure per time step (`expenditure`);
+
+  - **patch-to-patch dispersal** of a set number of individuals per patch (`dispersal`);
   
-  - `dem()` with 2 important arguments,
+  - **resource replenishment** within each patch (`res_input`);
   
-  - `disperse()` with 1 important argument,
+  - and trait-based **feeding** governed by maximum resource intake (`intake`), and relative strength of niche clustering (`clustering`) and niche dispersion (`dispersion`).
   
-  - `forage()` with 3 important arguments.
-  
-Here is the list of these parameters and the functions they act as arguments in:
+While all of these parameters are interesting to investigate, they vary in their ecological importance. Some of these parameters, while are necessary to parametrize the model, are, rather, nuisance parameters. Such parameters do not have to be considered in sensitivity analyses and can stay fixed. For example,
 
-1. `M` -- regional pool species richness (`init_meta()`),
+- the trait mean across species in the regional pool (***`env_mean_mc`***) may stay equal to zero, since both the environmental factor and the trait have the same scale and represent, rather, the variation of the environmental factor and of the trait adapted to it. In the context of environmental filtering, the exact regional mean is not as important as the difference between the mean environmental factor at the regional and the local scale. Therefore, this difference can be expressed as the value of `env_mean_lh` as `env_mean_mc` is equal to zero.
 
-2. `env_mean_mc` -- mean environmental factor value within the extent of the regional pool (`init_meta()`),
+- the abundance of the most common species in the regional pool (***`max_abun`***) is only used to ensure that all of the species abundances in the regional pool are countable and comparable, so this value can be set to a reasonably large value (e.g., a $10^6$).
 
-3. `env_sd_mc` -- variation of environmental factor value within the extent of the regional pool (`init_meta()`),
+- resource available at each habitat patch at initialization (***`res`***) cannot be negative to allow the first time steps of the simulation to happen and individuals --- to feed, but the simulation dynamics are expected to depend much more on the input of new resource per time step (`res_input`) rather than initial resource pool. This variable was set to a fixed value of $100$ resource units per patch at the beginning of the simulation run.
 
-4. `cauchy` -- Cauchy function shape that connects species trait values with log-abundance in the regional pool (`init_meta()`),
+- likewise, the number of individuals drawn from the regional pool into the newly initialized local community (`nind0`) should not be highly relevant since the number of individuals is expected to reach some equilibrium point during a simulation run as a function of resource replenishment rate and resource expenditure for metabolism. However, this number should be reasonably high to allow for initial species diversity in the local community, especially when species abundance distribution in the regional pool is uneven. This parameter was fixed at $10^4$.
 
-5. `trait_sds` -- intraspecific trait variation within the regional pool (`init_meta()`),
-
-6. `max_abun` -- abundance of the most common species within the regional pool (`init_meta()`),
-
-7. `npatch` -- number of habitat patches in the local environment (`init_envt()`),
-
-8. `res` -- initial available resource within habitat patch (`init_envt()`),
-
-9. `gradient` -- spatial configuration of environmental conditions across the patches (random, linear, correlated, or clustered) (`init_envt()`), with related parameters
-
-  - `K` -- number of clusters if configuration is clustered,
-  
-  - `rho` -- correlation of environmental factor with patch location if configuration is correlated,
-
-10. `env_mean_lh` -- mean environmental factor across all habitat patches (`init_envt()`),
-
-11. `env_sd_lh` -- variation of the environmental factor across all habitat patches (`init_envt()`),
-
-12. `nind = recruitment` -- number of individuals to be drawn from the regional pool per time step (`draw_lcom()`, `recruit()` and thus `run_sim()`),
-
-13. `age_crit` -- critical age at which half of individuals die (`draw_lcom()`, `dem()` and thus `run_sim()`),
-
-14. `mass_crit` -- critical mass at which half of individuals reproduce (`draw_lcom()`, `dem()` and thus `run_sim()`),
-
-15. `nsteps` -- number of time steps in a simulation run (`run_sim()`),
-
-16. `dispersal` -- number of individuals that move to a neighboring habitat patch per time step per patch (`disperse()` and thus`run_sim()`),
-
-17. `res_input` -- resource regeneration rate per time step per patch (`run_sim()`),
-
-18. `R` -- resource level at which there is no competition and all individuals consume resource (`run_sim()`),
-
-19. `clustering` -- effect of niche clustering on probability of competition (`forage()` and thus `run_sim()`),
-
-20. `dispersion` -- effect of niche dispersion on probability of trait filtering (`forage()` and thus `run_sim()`).
-
-As it becomes apparent, this model is clearly overparametrized. 
-However, none of these parameters are redundant; many of them are needed for biological realism.
-It can be argued, though, that some of these parameters are, rather, nuisance parameters --- they are used for realism of the model, but should not be of a primary interest.
-For example, `M` and `env_mean_mc` should probably be fixed as regional pool species richness and the exact regional mean trait value are not in a focus of studying ecological mechanism. 
-Furthermore, in regards of `env_mean_mc` and `env_mean_lh`, their absolute values are not as important for describing environmental filtering as much as the difference between them.
-Therefore, sensitivity analysis should rather be focused on such difference.
-For another example, parameters like `res`, `res_input`, and `R` were only introduced to the model to include the effects of resource availability (real communities would collapse if the resource is absent) so they could be painlessly excluded from the sensitivity analyses.
-
-Overall, the following parameters were chosen to be investigated:
-
-- `d_env` as an absolute difference between `env_mean_mc` and `env_mean_lh` (with set `env_mean_mc = 0`),
-
-- `env_sd_mc`,
-
-- `cauchy`,
-
-- `trait_sds`,
-
-- `gradient`,
-
-- `env_sd_lh`,
-
-- `recruitment`,
-
-- `dispersal`,
-
-- `age_crit`,
-
-- `mass_crit`,
-
-- `clustering`,
-
-- `dispersion`,
-
-which still adds up to 12 parameters in the parameter space.
-
-## Nuisance parameters
-
-Since some parameters were not included in the list above, we should define their fixed values used in simulation runs:
-
-- `M = 450`
-
-- `max_abun = 10^6`
-
-- `npatch = 100`
-
-- `res = 1000`
-
-- `K = 3`
-
-- `rho = 0.9`
-
-- `nsteps = 1000`
-
-- `res_input = 10`
-
-- `R = 1000`
+Therefore, the list of parameters of interest for sensitivity analyses include `M`, `env_sd_mc`, `cauchy`, `trait_sds` for regional pool initialization; `npatch`, `env_mean_lh`, `env_sd_lh` for local habitat initialization; and `recruitment`, `dispersal`, `reproduction`, `expenditure`, `res_input`, `intake`, `clustering`, `dispersion` for the simulation run.
 
 ## Parameter ranges
 
-We define the ranges for parameter values as following:
+Some parameters are bounded in their values (e.g., `clustering` and `dispersion` can only be between 0 and 1), while others do not have an upper bound; in such cases, the bounds were selected somewhat arbitrarily. We define the ranges for parameter values as following:
 
 ```{r eval=F, echo=T}
 param_ranges <- tibble(
-  d_env = c(0, 5),
+  M = c(2, 500),
   env_sd_mc = c(0.1, 10),
   cauchy = c(0.1, 25),
   trait_sds = c(0, 1),
-  env_sd_lh = c(1, 5),
+  npatch = c(10, 100),
+  env_mean_lh = c(0, 10),
+  env_sd_lh = c(0.1, 10),
   recruitment = c(0, 10),
   dispersal = c(0, 10),
-  age_crit = c(1, 20),
-  mass_crit = c(1, 20),
+  reproduction = c(0.5, 10),
+  expenditure = c(0, 2),
+  res_input = c(0, 100),
+  intake = c(0.1, 2),
   clustering = c(0, 1),
   dispersion = c(0, 1)
 )
@@ -175,15 +84,11 @@ where the first row indicates the lower boundary of the parameter value and the 
 
 ## Parameter hypercube
 
-Parameters were sampled using a low-discrepancy sequence as implemented in package `SobolSequence`. Such a quasi-random sampling design is optimal when model behavior is not yet known ([Puy et al. 2022](https://cran.r-project.org/web/packages/sensobol/vignettes/sensobol.pdf)).
-First, 22 random variables were created with 100 values in each.
-These 22 variables are then divided into two sets of 11, corresponding to the 11 parameters in question.
+Parameters were sampled using a low-discrepancy sequence as implemented in package `sensobol`. Such a quasi-random sampling design is optimal when model behavior is not yet known ([Puy et al. 2022](https://cran.r-project.org/web/packages/sensobol/vignettes/sensobol.pdf)).
 
-```{r eval=F, echo=T}
-sseq <- SobolSequence::sobolSequence.points(dimR = 22, count = 100)
-randcols <- sample(1:22, 11, F)
-sseq1 <- sseq[,randcols]
-sseq2 <- sseq[,-randcols]
+```{r eval=FALSE, echo=TRUE}
+library(sensobol)
+mat <- sobol_matrices(N = 2^9, params = colnames(param_ranges))
 ```
 
 Next, we scale these variables by the desired minimum and maximum values for every parameter:
@@ -193,63 +98,134 @@ minmaxscale <- function(x, minx = min(x), maxx = max(x), minout, maxout){
   minout + ((x - minx)*(maxout - minout))/(maxx - minx)
 }
 
-params1 <- sapply(1:11, function(variable){
-  minmaxscale(x = sseq1[, variable], 
-              minx = 0, maxx = 1, 
+params <- sapply(1:15, function(variable){
+  minmaxscale(x = mat[, variable], 
+              minx = min(mat[, variable]), 
+              maxx = max(mat[, variable]), 
               minout = param_ranges[1, variable] %>% unlist() %>% unname(),
               maxout = param_ranges[2, variable] %>% unlist() %>% unname())
 })
-colnames(params1) <- colnames(param_ranges)
-params1 <- as_tibble(params1)
-
-params2 <- sapply(1:11, function(variable){
-  minmaxscale(x = sseq2[, variable], 
-              minx = 0, maxx = 1, 
-              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
-              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
-})
-colnames(params2) <- colnames(param_ranges)
-params2 <- as_tibble(params2)
-```
-
-Now we may construct the sample matrices as combinations of variables from `params1` and `params2` as required by Sobol' method.
-
-```{r eval=F, echo=T}
-`%notin%` <- function(x, y){!`%in%`(x, y)}
-
-sample_matrix <- bind_rows(
-  params1 %>%
-    mutate(submatrix = "A", .before = d_env),
-  params1 %>%
-    mutate(submatrix = "B", .before = d_env)
-) %>% bind_rows(
-  lapply(1:11, function(i){
-  bind_cols(params1[, ((1:11)[1:11 %notin% i])], params2[, i]) %>%
-    mutate(submatrix = as.character(i))
-}) %>%
-    bind_rows()
-)
-```
-
-Finally, it is important not to forget the last parameter in question -- spatial configuration of the local environment, which is a factor with four levels: random, clustered, correlated, or linear:
-
-```{r eval=F, echo=T}
-sample_matrix <- tidyr::expand_grid(
-  sample_matrix,
-  tibble(gradient = c("random", "clustered", "correlated", "linear"))
-)
-
-sample_matrix
-```
-
-```{r eval=F, echo=F}
-sample_matrix %>% write_csv("../../../sobol_matrix.csv")
-sample_matrix <- read_csv("../../../sobol_matrix.csv")
+colnames(params) <- colnames(param_ranges)
+params <- params %>%
+  as_tibble() %>% 
+  mutate(M = as.integer(M),
+         npatch = as.integer(npatch))
 ```
 
 # Running simulations
 
-Since this sensitivity analysis requires 5200 independent runs of the agent-based model, this step was done using an high-performance computing (HPC) cluster.
+Since this sensitivity analysis requires thousands independent runs of the agent-based model, this step was done using an high-performance computing (HPC) cluster. All of the previous steps were thus combined in a single script:
+
+```{r eval=FALSE, echo=TRUE}
+library(doParallel)
+library(foreach)
+library(tidyverse)
+library(lubridate)
+library(progress)
+library(devtools)
+if(!require("FilterABM")) devtools::install_github("OleksiiDubovyk/FilterABM")
+library(FilterABM)
+library(sensobol)
+
+# define parameter boundaries
+param_ranges <- tibble(
+  M = c(2, 500),
+  env_sd_mc = c(0.1, 10),
+  cauchy = c(0.1, 25),
+  trait_sds = c(0, 1),
+  npatch = c(10, 100),
+  env_mean_lh = c(0, 10),
+  env_sd_lh = c(0.1, 10),
+  recruitment = c(0, 10),
+  dispersal = c(0, 10),
+  reproduction = c(0.5, 10),
+  expenditure = c(0, 2),
+  res_input = c(0, 100),
+  intake = c(0.1, 2),
+  clustering = c(0, 1),
+  dispersion = c(0, 1)
+)
+
+# create the hypercube
+mat <- sobol_matrices(N = 2^9, params = colnames(param_ranges))
+
+# rescale the hypercube
+minmaxscale <- function(x, minx = min(x), maxx = max(x), minout, maxout){
+  minout + ((x - minx)*(maxout - minout))/(maxx - minx)
+}
+params <- sapply(1:15, function(variable){
+  minmaxscale(x = mat[, variable], 
+              minx = min(mat[, variable]), 
+              maxx = max(mat[, variable]), 
+              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
+              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
+})
+colnames(params) <- colnames(param_ranges)
+params <- params %>%
+  as_tibble() %>% 
+  mutate(M = as.integer(M),
+         npatch = as.integer(npatch))
+
+# run the simulations
+num_cores <- detectCores()
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+out <- foreach(i = 1:nrow(params), 
+               .combine = 'bind_rows',
+               .packages = c("tidyverse", "progress", "lubridate", "FilterABM")) %dopar%{
+                 x <- tryCatch(
+                   FilterABM::crun_sim_(
+                     nsteps = 1000, progress_bar = F, 
+                     M = params$M[i], 
+                     env_mean_mc = 0, 
+                     env_sd_mc = params$env_sd_mc[i], 
+                     cauchy = params$cauchy[i], 
+                     trait_sds = params$trait_sds[i], 
+                     max_abun = 1e6, 
+                     npatch = params$npatch[i], 
+                     res = 1000, 
+                     gradient = "correlated", K = 3, rho = 0.75,
+                     env_mean_lh = params$env_mean_lh[i], 
+                     env_sd_lh = params$env_sd_lh[i], 
+                     nind0 = 1e4, 
+                     recruitment = params$recruitment[i], 
+                     dispersal = params$dispersal[i], 
+                     reproduction = params$reproduction[i], 
+                     expenditure = params$expenditure[i], 
+                     res_input = params$res_input[i], 
+                     intake = params$intake[i], 
+                     clustering = params$clustering[i], 
+                     dispersion = params$dispersion[i]
+                   ), 
+                   error = function(e){
+                     tibble(runtime = NA, extinct = NA, S = NA, nind = NA,
+                            sad_ks = NA, 
+                            t_mean = NA, t_mean0 = NA, t_var = NA, t_var0 = NA,
+                            tad_ks = NA)
+                   }
+                 )
+                 x <- x[names(x)[!names(x) %in% c("params", "mc", "lh", "sad", "tad")]] %>%
+                   unlist()
+                 x
+               }
+stopCluster(cl)
+
+out %>% write_csv("filtsens.csv")
+bind_cols(params, out) %>%
+  write_csv("filtparamsens.csv")
+```
+
+
+```{r eval = F}
+y <- sobol_Fun(mat)
+plot_scatter(data = mat, N = N, Y = y, params = params)
+plot_multiscatter(data = mat, N = N, Y = y, params = params)
+ind <- sobol_indices(Y = y, N = N, params = params, boot = T, R = R, type = type, conf = conf)
+ind$results %>% as_tibble()
+ind.dummy <- sobol_dummy(Y = y, N = N, params = params, boot = T, R = R)
+plot(ind, dummy = ind.dummy)
+```
 
 Here is an example of a code that would have been used to run a single simulation, for example, for the first row of parameters in `sample_matrix`.
 
@@ -804,7 +780,7 @@ for (filename in outfiles){
 basic_results %>% write_csv("./basic_results.csv")
 ```
 
-```{r echo=F, eval=T}
+```{r echo=F, eval=F}
 basic_results <- read_csv("./basic_results.csv")
 
 basic_results <- basic_results %>%
@@ -1123,7 +1099,7 @@ sens <- function(data, parameter, Y, type = "first", boot = T, nperm = 999){
 
 Now, let's build a wrapper around this function.
 
-```{r echo=T, eval=T}
+```{r echo=T, eval=F}
 sens_all <- function(data, Y, boot = T, nperm = 999){
   #
   # `data` = a tibble that contains the following columns:
@@ -1169,7 +1145,7 @@ Now, we can look at our preliminary sensitivity analyses.
 
 ## Simulation time
 
-```{r}
+```{r eval = F}
 sens_runtime <- basic_results %>% 
   sens_all(Y = "runtime")
 
@@ -1179,7 +1155,7 @@ sens_runtime %>% filter(type == "total") %>% arrange(desc(estimate))
 
 ## Extinction probability
 
-```{r}
+```{r eval = F}
 sens_extinct <- basic_results %>% 
   sens_all(Y = "extinct")
 
@@ -1189,7 +1165,7 @@ sens_extinct %>% filter(type == "total") %>% arrange(desc(estimate))
 
 # Number of individuals
 
-```{r}
+```{r eval = F}
 sens_nind <- basic_results %>% 
   sens_all(Y = "nind")
 
@@ -1199,7 +1175,7 @@ sens_nind %>% filter(type == "total") %>% arrange(desc(estimate))
 
 # Species richness
 
-```{r}
+```{r eval = F}
 sens_S <- basic_results %>% 
   sens_all(Y = "S")
 
