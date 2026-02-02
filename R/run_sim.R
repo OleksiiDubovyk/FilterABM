@@ -248,33 +248,57 @@ run_sim_ <- function(mc, lh, lc,
 
   if (!out$extinct){
 
-    out$S <- lc$species %>% unique() %>% length()
+    if (nrow(lc) > 1){
 
-    out$nind <- nrow(lc)
+      out$S <- lc$species %>% unique() %>% length()
 
-    out$sad <- lc %>%
-      group_by(species) %>%
-      summarise(n = n()) %>%
-      .$n %>% sort(decreasing = T)
+      out$nind <- nrow(lc)
 
-    out$sad_ks <- median(sad_ks_boot(out$sad, out$mc))
+      out$sad <- lc %>%
+        group_by(species) %>%
+        summarise(n = n()) %>%
+        .$n %>% sort(decreasing = T)
 
-    out$tad <- density(
-      lc$trait,
-      # KDE for plus/minus 3 sigmas from the most extreme trait values
-      from = min(min(mc$trait), min(lc$trait)) - 3*(max(mc$trait_sd)^0.5),
-      to = max(max(mc$trait), max(lc$trait)) + 3*(max(mc$trait_sd)^0.5)
-    )
+      out$sad_ks <- median(sad_ks_boot(out$sad, out$mc))
 
-    out$t_mean <- mean(lc$trait)
-    out$t_var <- var(lc$trait)
+      out$tad <- density(
+        lc$trait,
+        # KDE for plus/minus 3 sigmas from the most extreme trait values
+        from = min(min(mc$trait), min(lc$trait)) - 3*(max(mc$trait_sd)^0.5),
+        to = max(max(mc$trait), max(lc$trait)) + 3*(max(mc$trait_sd)^0.5)
+      )
 
-    lc_tmp <- draw_lcom(mc = mc, lh = lh, nind = nrow(lc))
-    out$t_mean0 <- mean(lc_tmp$trait)
-    out$t_var0 <- var(lc_tmp$trait)
+      out$t_mean <- mean(lc$trait)
+      out$t_var <- var(lc$trait)
 
-    out$tad_ks <- median(tad_ks_boot(out$tad, out$mc))
+      lc_tmp <- draw_lcom(mc = mc, lh = lh, nind = nrow(lc))
+      out$t_mean0 <- mean(lc_tmp$trait)
+      out$t_var0 <- var(lc_tmp$trait)
 
+      out$tad_ks <- median(tad_ks_boot(out$tad, out$mc))
+
+    }else{
+
+      out$S <- 1
+
+      out$nind <- 1
+
+      out$sad <- 1
+
+      out$sad_ks <- NA
+
+      out$tad <- lc$trait[1]
+
+      out$t_mean <- lc$trait[1]
+      out$t_var <- 0
+
+      lc_tmp <- draw_lcom(mc = mc, lh = lh, nind = nrow(lc))
+      out$t_mean0 <- lc_tmp$trait[1]
+      out$t_var0 <- 0
+
+      out$tad_ks <- NA
+
+    }
   }
 
   return(out)
