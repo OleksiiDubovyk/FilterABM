@@ -115,7 +115,7 @@ params <- params %>%
 remove(mat) ; remove(minmaxscale) ; remove(param_ranges)
 ```
 
-# Running simulations
+# Community extinction
 
 Since this sensitivity analysis requires thousands independent runs of the agent-based model, this step was done using an high-performance computing (HPC) cluster. All of the previous steps were thus combined in a single script:
 
@@ -210,7 +210,7 @@ out <- foreach(i = 1:nrow(params),
                                 tad_ks = NA)
                        }
                      )
-                     y[names(y)[!names(y) %in% c("params", "mc", "lh", "sad", "tad")]] %>%
+                     y[c("runtime", "extinct")] %>%
                        unlist()
                    }
                  )
@@ -223,428 +223,404 @@ stopCluster(cl)
 out %>% write_csv("sens_outputs.csv")
 ```
 
-```{r eval=FALSE, echo=TRUE}
-out <- read_csv("./vignettes/sens_outputs.csv")
-```
+```{r eval=T, echo=F}
+out <- read_csv("./sens_outputs.csv")
 
-```{r eval=FALSE}
-plot_scatter(data = params, N = 2^9, Y = out$runtime, params = colnames(params))
-params[which(is.na(out$runtime)),]
-```
+param_ranges <- tibble(
+  M = c(2, 500),
+  env_sd_mc = c(0.1, 10),
+  cauchy = c(0.1, 25),
+  trait_sds = c(0, 1),
+  npatch = c(10, 100),
+  env_mean_lh = c(0, 10),
+  env_sd_lh = c(0.1, 10),
+  recruitment = c(0, 10),
+  dispersal = c(0, 10),
+  reproduction = c(0.5, 10),
+  expenditure = c(0.05, 2),
+  res_input = c(0.1, 20),
+  intake = c(0.1, 2),
+  clustering = c(0, 1),
+  dispersion = c(0, 1)
+)
 
+# create the hypercube
+mat <- sobol_matrices(N = 2^9, params = colnames(param_ranges))
 
-
-```{r eval = F}
-y <- sobol_Fun(mat)
-plot_scatter(data = mat, N = N, Y = y, params = params)
-plot_multiscatter(data = mat, N = N, Y = y, params = params)
-ind <- sobol_indices(Y = y, N = N, params = params, boot = T, R = R, type = type, conf = conf)
-ind$results %>% as_tibble()
-ind.dummy <- sobol_dummy(Y = y, N = N, params = params, boot = T, R = R)
-plot(ind, dummy = ind.dummy)
-```
-
-
-
-
-
-
-
-```{r echo=TRUE, eval = FALSE}
-sens <- function(data, parameter, Y, type = "first", boot = T, nperm = 999){
-  #
-  # `data` = a tibble that contains the following columns:
-  #   `submatrix` - chr, named as "A", "B", and parameter names
-  #   `index` - int, row index that should be consistent across matrices
-  #   `<any name>` - num, simulation result
-  # `parameter` - chr, parameter name as written in `submatrix`
-  # `Y` - chr, column name for simulation result
-  # `type` - chr, estimator type, "first" for first-order index and "total" for total-order
-  # `boot` - lgl, whether to estimate 95% CI
-  # `nperm` - int, if `boot = T`, how many permutations to use
-  #
-  
-  sensitivity <- numeric(1)
-  
-  Y_A <- data %>%
-    filter(submatrix == "A") %>%
-    arrange(index) %>%
-    .[, Y] %>%
-    unlist() %>% unname()
-  
-  Y_B <- data %>%
-    filter(submatrix == "B") %>%
-    arrange(index) %>%
-    .[, Y] %>%
-    unlist() %>% unname()
-  
-  Y_fact <- data %>%
-    filter(submatrix == parameter) %>%
-    arrange(index) %>%
-    .[, Y] %>%
-    unlist() %>% unname()
-  
-  idx_na <- c(
-    which(is.na(Y_A)),
-    which(is.na(Y_B)),
-    which(is.na(Y_fact))
-  ) %>% unique()
-  
-  if (length(idx_na) > 0){
-    Y_A <- Y_A[-idx_na]
-    Y_B <- Y_B[-idx_na]
-    Y_fact <- Y_fact[-idx_na]
-  }
-  
-  Y_var <- var(c(Y_A, Y_B))
-  N <- length(Y_A)
-  
-  if (Y_var <= 0){
-    warning(
-      "Zero variance in sensitivity analysis. \n", call. = T
-    )
-    return(c(
-      "estimate" = NA,
-      "L95CI" = NA,
-      "U95CI" = NA
-    ))
-  }
-  
-  if (type == "first"){
-    
-    sensitivity <- (1 / N) * sum( Y_B * (Y_fact - Y_A)) / Y_var
-    
-    dY <- mean(Y_A * Y_B)
-    dY_var <- (1 / (2*N - 1)) * sum(Y_A^2 + Y_B^2) - dY
-    dummy_sens <- (1 / (N-1) * sum(Y_A * Y_B) - dY) / dY_var
-    dummy_sens <- ifelse(dummy_sens < 0, 0, dummy_sens)
-    crit <- sensitivity <= dummy_sens
-    
-    if (boot){
-      
-      sens_boot <- numeric(nperm)
-      
-      for (perm in 1:nperm){
-        
-        boot_sample <- sample(1:length(Y_A), length(Y_A), replace = T)
-        
-        bY_A <- Y_A[boot_sample]
-        bY_B <- Y_B[boot_sample]
-        bY_fact <- Y_fact[boot_sample]
-        
-        sens_boot[perm] <- (1 / N) * sum( bY_B * (bY_fact - bY_A)) / var(c(bY_A, bY_B))
-        
-        sens_boot <- sens_boot[!is.na(sens_boot)]
-        
-        crit <- mean(sens_boot <= dummy_sens)
-        
-      }
-    }
-    
-  } else if (type == "total") {
-
-    sensitivity <- (1 / (2*N)) * sum( (Y_A - Y_fact)^2 ) / Y_var
-    
-    dY <- mean(Y_A * Y_B)
-    dY_var <- (1 / (2*N - 1)) * sum(Y_A^2 + Y_B^2) - dY
-    dummy_sens <- 1 - (1 / (N - 1) * sum(Y_B * Y_B) - dY) / dY_var
-    dummy_sens <- ifelse(dummy_sens < 0, 0, dummy_sens)
-    crit <- sensitivity <= dummy_sens
-    
-    if (boot){
-      
-      sens_boot <- numeric(nperm)
-      
-      for (perm in 1:nperm){
-        
-        boot_sample <- sample(1:length(Y_A), length(Y_A), replace = T)
-        
-        bY_A <- Y_A[boot_sample]
-        bY_B <- Y_B[boot_sample]
-        bY_fact <- Y_fact[boot_sample]
-        
-        sens_boot[perm] <- (1 / (2*N)) * sum( (bY_A - bY_fact)^2 ) / var(c(bY_A, bY_B))
-        
-        sens_boot <- sens_boot[!is.na(sens_boot)]
-        
-        crit <- mean(sens_boot <= dummy_sens)
-        
-      }
-    }
-    
-  }
-  
-  if (boot){
-    return(c(
-      "estimate" = sensitivity,
-      "L95CI" = quantile(sens_boot, probs = 0.025) %>% unname(),
-      "U95CI" = quantile(sens_boot, probs = 0.975) %>% unname(),
-      "p" = crit
-    ))
-  } else {
-    return(c(
-      "estimate" = sensitivity,
-      "L95CI" = NA,
-      "U95CI" = NA,
-      "p" = crit
-    ))
-  }
-  
+# rescale the hypercube
+minmaxscale <- function(x, minx = min(x), maxx = max(x), minout, maxout){
+  minout + ((x - minx)*(maxout - minout))/(maxx - minx)
 }
+params <- sapply(1:15, function(variable){
+  minmaxscale(x = mat[, variable], 
+              minx = min(mat[, variable]), 
+              maxx = max(mat[, variable]), 
+              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
+              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
+})
+colnames(params) <- colnames(param_ranges)
 ```
 
-Now, let's build a wrapper around this function.
+It seems that in roughly half of the simulations, the run ended with a total extinction of the community:
 
-```{r echo=T, eval=F}
-sens_all <- function(data, Y, boot = T, nperm = 999){
-  #
-  # `data` = a tibble that contains the following columns:
-  #   `submatrix` - chr, named as "A", "B", and parameter names
-  #   `index` - int, row index that should be consistent across matrices
-  #   `<any name>` - num, simulation result
-  # `Y` - chr, column name for simulation result
-  # `boot` - lgl, whether to estimate 95% CI
-  # `nperm` - int, if `boot = T`, how many permutations to use
-  #
-  
-  pars <- unique(data$submatrix)
-  pars <- pars[!(pars %in% c("A", "B"))]
-  
-  first <- lapply(
-    pars, 
-    function(par){
-      sens(data = data, parameter = par, Y = Y, type = "first", boot = boot, nperm = nperm)
-    }
-  ) %>% bind_rows() %>%
-    mutate(parameter = pars,
-           type = "first")
-  
-  total <- lapply(
-    pars, 
-    function(par){
-      sens(data = data, parameter = par, Y = Y, type = "total", boot = boot, nperm = nperm)
-    }
-  ) %>% bind_rows() %>%
-    mutate(parameter = pars,
-           type = "total")
-  
-  return(
-    bind_rows(
-      first, total
-    )
-  )
-  
-}
+```{r}
+out %>%
+  group_by(extinct == 0) %>%
+  summarize(n = n())
 ```
 
-Now, we can look at our preliminary sensitivity analyses.
+Preliminary sensitivity analysis suggests that `expenditure` is a parameter mainly responsible for community extinction:
 
-## Simulation time
-
-```{r eval = F}
-sens_runtime <- basic_results %>% 
-  sens_all(Y = "runtime")
-
-sens_runtime %>% filter(type == "first") %>% arrange(desc(estimate))
-sens_runtime %>% filter(type == "total") %>% arrange(desc(estimate))
+```{r fig.height=5, fig.width=7, units="in"}
+ind <- sensobol::sobol_indices(Y = out$extinct, 
+                               N = 2^9, 
+                               params = colnames(params), 
+                               boot = T, R = 10^3, type = "norm", conf = 0.95)
+ind.dummy <- sensobol::sobol_dummy(Y = out$extinct, 
+                                   N = 2^9, 
+                                   params = colnames(params), 
+                                   boot = T, R = 10^3)
+plot(ind, dummy = ind.dummy) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2))
 ```
 
-## Extinction probability
+This is also confirmed via plotting mean extinction probabilities as a function of parameter values:
 
-```{r eval = F}
-sens_extinct <- basic_results %>% 
-  sens_all(Y = "extinct")
-
-sens_extinct %>% filter(type == "first") %>% arrange(desc(estimate))
-sens_extinct %>% filter(type == "total") %>% arrange(desc(estimate))
+```{r warning=FALSE, fig.height=5, fig.width=7, units="in"}
+sensobol::plot_scatter(data = params, 
+                       N = 2^9, 
+                       Y = out$extinct, 
+                       params = colnames(params))
 ```
 
-# Number of individuals
+We adjust `expenditure` range so that it does not exceed `1` to ensure that there are no extinctions in the further analyses. This modification make sense as one would expect the community to collapse when individuals, on average, consume less resource per time step than it costs them to survive that time step (e.g., `expenditure > intake`).
 
-```{r eval = F}
-sens_nind <- basic_results %>% 
-  sens_all(Y = "nind")
+# Community size
 
-sens_nind %>% filter(type == "first") %>% arrange(desc(estimate))
-sens_nind %>% filter(type == "total") %>% arrange(desc(estimate))
-```
-
-# Species richness
-
-```{r eval = F}
-sens_S <- basic_results %>% 
-  sens_all(Y = "S")
-
-sens_S %>% filter(type == "first") %>% arrange(desc(estimate))
-sens_S %>% filter(type == "total") %>% arrange(desc(estimate))
-```
-
-# SAD
-
-```{r eval = F}
-outfile <- readRDS("./vignettes/fabm10.rds")
-
-
-N <- outfile$nind
-
-rand_sad <- sample(outfile$mc$species, 
-                   size = N, replace = T, 
-                   prob = outfile$mc$abundance/sum(outfile$mc$abundance))
-
-rand_sad <- sapply(sort(unique(rand_sad)),
-       function(x){
-         length(rand_sad[rand_sad == x])
-       })
-
-plot(x = 1:length(rand_sad),
-     y = sort(rand_sad),
-     pch = 16, log = "y",
-     ylim = c(1, max(rand_sad, outfile$sad$n)))
-points(x = 1:nrow(outfile$sad),
-       y = sort(outfile$sad$n),
-       pch = 16, col = "red")
-
-plot(x = 1:length(rand_sad),
-     y = sort(rand_sad) %>% cumsum(),
-     pch = 16,
-     ylim = c(1, max(sum(rand_sad), sum(outfile$sad$n))))
-points(x = 1:nrow(outfile$sad),
-       y = sort(outfile$sad$n) %>% cumsum(),
-       pch = 16, col = "red")
-
-sad_cmf <- function(sad1, sad2){
-  len <- max(length(sad1), length(sad2))
-  x1 <- sort(sad1/sum(sad1))
-  x2 <- sort(sad2/sum(sad2))
-  c1 <- cumsum(x1)
-  c2 <- cumsum(x2)
-  if (length(sad1) > length(sad2)){
-    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
-  } else if (length(sad1) < length(sad2)) {
-    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
-  }
-  return(list(c1, c2))
-}
-
-tmp <- sad_cmf(log(rand_sad), log(outfile$sad$n))
-
-plot(tmp[[1]], type = "l")
-lines(1:length(tmp[[2]]), tmp[[2]], col = "red")
-
-outfile$mc %>%
-  left_join(outfile$sad, by = "species") %>%
-  ggplot(aes(x = abundance, y = n)) +
-  geom_point()
-
-sad_ks <- function(sad1, sad2){
-  len <- max(length(sad1), length(sad2))
-  x1 <- sort(sad1/sum(sad1))
-  x2 <- sort(sad2/sum(sad2))
-  c1 <- cumsum(x1)
-  c2 <- cumsum(x2)
-  if (length(sad1) > length(sad2)){
-    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
-  } else if (length(sad1) < length(sad2)) {
-    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
-  }
-  return(max(abs(c1 - c2)))
-}
-
-boot_sad_ks <- function(regpool, obs_sad, nperm = 100){
-  ks <- numeric(nperm)
-  N <- sum(obs_sad)
-  for (i in 1:nperm){
-    rand_sad <- sample(regpool$species, 
-                       size = N, replace = T, 
-                       prob = regpool$abundance/sum(regpool$abundance))
-    
-    rand_sad <- sapply(sort(unique(rand_sad)),
-                       function(x){
-                         length(rand_sad[rand_sad == x])
-                       })
-    
-    ks[i] <- sad_ks(rand_sad, obs_sad)
-  }
-  return(ks)
-}
-
-tmp <- boot_sad_ks(outfile$mc, obs_sad = outfile$sad$n)
-
-
-
-
-
-tad_exp <- sapply(1:nrow(outfile$mc), function(i){
-  rep(outfile$mc$trait[i], times = outfile$mc$abundance[i])
-}) %>% unlist() %>% density(from = -40, to = 40)
-tad_obs <- outfile$tad
-
-cumsum(tad_exp$y) / cumsum(tad_exp$y)[length(tad_exp$y)]
-
-plot(tad_exp)
-lines(tad_obs, col = "red")
-
-plot(1:512, cumsum(tad_exp$y) / cumsum(tad_exp$y)[length(tad_exp$y)], pch = 16, xlim = c(245, 270))
-lines(1:512, cumsum(tad_obs$y) / cumsum(tad_obs$y)[length(tad_obs$y)], col = "red")
-
-tad_ks <- function(tad1, tad2){
-  c1 <- cumsum(tad1$y)
-  c1 <- c1 / max(c1)
-  c2 <- cumsum(tad2$y)
-  c2 <- c2 / max(c2)
-  return(max(abs(c1 - c2)))
-}
-
-tad_ks(tad_exp, tad_obs)
-```
+We run the next round of simulations with the expectation that the parameter ranges will prohibit the community from collapsing. We increase the number of iterations to `2^10`. At this stage, we are interested in parameters that do not affect the composition of communities and therefore can be fixed.
 
 ```{r eval=F}
-# SAD
+# define parameter boundaries
+param_ranges <- tibble(
+  M = c(2, 500),
+  env_sd_mc = c(0.1, 10),
+  cauchy = c(0.1, 25),
+  trait_sds = c(0, 1),
+  npatch = c(10, 100),
+  env_mean_lh = c(0, 10),
+  env_sd_lh = c(0.1, 10),
+  recruitment = c(0, 10),
+  dispersal = c(0, 10),
+  reproduction = c(0.5, 10),
+  expenditure = c(0.01, 1), # adjustment here
+  res_input = c(0.05, 25),
+  intake = c(1, 5), # and here
+  clustering = c(0, 1),
+  dispersion = c(0, 1)
+)
 
-sad_ks <- function(sad1, sad2){
-  len <- max(length(sad1), length(sad2))
-  x1 <- sort(sad1/sum(sad1))
-  x2 <- sort(sad2/sum(sad2))
-  c1 <- cumsum(x1)
-  c2 <- cumsum(x2)
-  if (length(sad1) > length(sad2)){
-    c2 <- c(c2, rep(1, (length(sad1) - length(sad2))))
-  } else if (length(sad1) < length(sad2)) {
-    c1 <- c(c1, rep(1, (length(sad2) - length(sad1))))
-  }
-  return(max(abs(c1 - c2)))
+# create the hypercube
+mat <- sobol_matrices(N = 2^10, params = colnames(param_ranges))
+
+# rescale the hypercube
+minmaxscale <- function(x, minx = min(x), maxx = max(x), minout, maxout){
+  minout + ((x - minx)*(maxout - minout))/(maxx - minx)
 }
+params2 <- sapply(1:15, function(variable){
+  minmaxscale(x = mat[, variable], 
+              minx = min(mat[, variable]), 
+              maxx = max(mat[, variable]), 
+              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
+              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
+})
+colnames(params2) <- colnames(param_ranges)
+params2 <- params2 %>%
+  as_tibble() %>% 
+  mutate(M = as.integer(M),
+         npatch = as.integer(npatch))
 
-boot_sad_ks <- function(regpool, obs_sad, nperm = 100){
-  ks <- numeric(nperm)
-  N <- sum(obs_sad)
-  for (i in 1:nperm){
-    rand_sad <- sample(regpool$species, 
-                       size = N, replace = T, 
-                       prob = regpool$abundance/sum(regpool$abundance))
-    
-    rand_sad <- sapply(sort(unique(rand_sad)),
-                       function(x){
-                         length(rand_sad[rand_sad == x])
-                       })
-    
-    ks[i] <- sad_ks(rand_sad, obs_sad)
-  }
-  return(median(ks))
-}
+# run the simulations
+num_cores <- detectCores()
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
 
-tmp <- boot_sad_ks(outfile$mc, obs_sad = outfile$sad$n)
+out2 <- foreach(i = 1:nrow(params2), 
+               .combine = 'bind_rows',
+               .packages = c("tidyverse", "progress", "lubridate", "FilterABM")) %dopar%{
+                 x <- lapply(
+                   1:5, 
+                   function(j){
+                     y <- tryCatch(
+                       FilterABM::crun_sim_(
+                         nsteps = 1000, progress_bar = F, 
+                         M = params2$M[i], 
+                         env_mean_mc = 0, 
+                         env_sd_mc = params2$env_sd_mc[i], 
+                         cauchy = params2$cauchy[i], 
+                         trait_sds = params2$trait_sds[i], 
+                         max_abun = 1e6, 
+                         npatch = params2$npatch[i], 
+                         res = 1000, 
+                         gradient = "correlated", K = 3, rho = 0.9,
+                         env_mean_lh = params2$env_mean_lh[i], 
+                         env_sd_lh = params2$env_sd_lh[i], 
+                         nind0 = 1e4, 
+                         recruitment = params2$recruitment[i], 
+                         dispersal = params2$dispersal[i], 
+                         reproduction = params2$reproduction[i], 
+                         expenditure = params2$expenditure[i], 
+                         res_input = params2$res_input[i], 
+                         intake = params2$intake[i], 
+                         clustering = params2$clustering[i], 
+                         dispersion = params2$dispersion[i]
+                       ), 
+                       error = function(e){
+                         tibble(runtime = NaN, extinct = NA, S = NA, nind = NA,
+                                sad_ks = NA, 
+                                t_mean = NA, t_mean0 = NA, t_var = NA, t_var0 = NA,
+                                tad_ks = NA)
+                       }
+                     )
+                     y[c("S", "nind")] %>%
+                       unlist()
+                   }
+                 )
+                 x %>% 
+                   bind_rows() %>%
+                   apply(2, function(z) mean(z, na.rm = T)) %>%
+                   bind_rows()
+               }
 
-# TAD
+stopCluster(cl)
 
-tad_ks <- function(tad1, tad2){
-  c1 <- cumsum(tad1$y)
-  c1 <- c1 / max(c1)
-  c2 <- cumsum(tad2$y)
-  c2 <- c2 / max(c2)
-  return(max(abs(c1 - c2)))
-}
-
-tad_ks(tad_exp, tad_obs)
+out2 %>% write_csv("filtsens1.csv")
 ```
 
+```{r eval=T, echo=F}
+out2 <- read_csv("./filtsens1.csv")
+
+param_ranges <- tibble(
+  M = c(2, 500),
+  env_sd_mc = c(0.1, 10),
+  cauchy = c(0.1, 25),
+  trait_sds = c(0, 1),
+  npatch = c(10, 100),
+  env_mean_lh = c(0, 10),
+  env_sd_lh = c(0.1, 10),
+  recruitment = c(0, 10),
+  dispersal = c(0, 10),
+  reproduction = c(0.5, 10),
+  expenditure = c(0.01, 1), # adjustment here
+  res_input = c(0.05, 25),
+  intake = c(1, 5), # and here
+  clustering = c(0, 1),
+  dispersion = c(0, 1)
+)
+
+# create the hypercube
+mat <- sobol_matrices(N = 2^10, params = colnames(param_ranges))
+
+# rescale the hypercube
+minmaxscale <- function(x, minx = min(x), maxx = max(x), minout, maxout){
+  minout + ((x - minx)*(maxout - minout))/(maxx - minx)
+}
+params2 <- sapply(1:15, function(variable){
+  minmaxscale(x = mat[, variable], 
+              minx = min(mat[, variable]), 
+              maxx = max(mat[, variable]), 
+              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
+              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
+})
+colnames(params2) <- colnames(param_ranges)
+
+params2 <- params2 %>%
+  as_tibble() %>% 
+  mutate(M = as.double(M),
+         npatch = as.double(npatch))
+```
+
+There were still a couple of simulations in which the community went extinct:
+
+```{r}
+out2 %>%
+  group_by(extinct == 0) %>%
+  summarize(n = n())
+```
+
+These instances seemed very rare, and in order to make sure that sensitivity analyses can be performed, missing values should be replaced with something (we choose mean vector values):
+
+```{r}
+for(i in 1:ncol(out2)){
+  out2[is.na(out2[,i]), i] <- mean(unlist(out2[,i]), na.rm = TRUE)
+}
+```
+
+## Species richness
+
+First, let's investigate the parameters that are the most associated with species richness in the local community:
+
+```{r fig.height=5, fig.width=7, units="in"}
+plot_scatter(data = params2, N = 2^10, Y = out2$S, params = colnames(params2))
+```
+
+```{r warning=F, fig.height=5, fig.width=7, units="in"}
+ind <- sensobol::sobol_indices(Y = out2$S, 
+                               N = 2^10, 
+                               params = colnames(params2), 
+                               boot = T, R = 10^3, type = "norm", conf = 0.95)
+ind.dummy <- sensobol::sobol_dummy(Y = out2$S, 
+                                   N = 2^10, 
+                                   params = colnames(params2), 
+                                   boot = T, R = 10^3)
+plot(ind, dummy = ind.dummy) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2))
+```
+
+So it seems that regional pool dictates local community richness: regional pool size (`M`), the relationship between traits and abundances in the regional pool (`cauchy`), and variation of traits in the regional pool (`env_sd_mc`) had the highest total-order sensitivity index values that exceeded ones expected randomly.
+
+Other parameters to which species richness had high sensitivity include `expenditure`, `npatch`, `res_input`, and `recruitment`. The first three parameters, as we will see later, affect the number of individuals and thus probably affect the number of species through rarefaction effects. However, recruitment rates should be considered when attempting to hold the community size constant since high recruitment rates from the regional pool may "contaminate" the local community.
+
+## Number of individuals
+
+Another variable of interest could be number of individuals in the simulation.
+
+```{r fig.height=5, fig.width=7, units="in"}
+plot_scatter(data = params2, N = 2^10, Y = out2$nind, params = colnames(params2))
+```
+
+```{r warning=F, fig.height=5, fig.width=7, units="in"}
+ind <- sensobol::sobol_indices(Y = out2$nind, 
+                               N = 2^10, 
+                               params = colnames(params2), 
+                               boot = T, R = 10^3, type = "norm", conf = 0.95)
+ind.dummy <- sensobol::sobol_dummy(Y = out2$nind, 
+                                   N = 2^10, 
+                                   params = colnames(params2), 
+                                   boot = T, R = 10^3)
+plot(ind, dummy = ind.dummy) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2))
+```
+
+As one could have expected, this variable depends mostly on energy expenditure (`expenditure`), number of habitat patches (`npatch`), and resource input per time step (`res_input`).
+
+## Constant community size
+
+To investigate the effects of environmental filtering on species abundance distribution and trait composition of local communities, one should account for the community size: number of individuals and species. To control for these factors, we should hold the simulation parameters that affect community size constant.
+
+We want to allow the community size to be large enough for meaningful estimation of trait density distributions, but reasonably small to allow the simulation runs to be short enough. Arbitrary values of `1000` individuals of `50` species seem like a good guess for a single observation of a natural community. Let's explore what parameter values should provide such estimates.
+
+```{r}
+bind_cols(
+  params2 %>% select(M, cauchy, env_sd_mc, expenditure, npatch, res_input, recruitment),
+  out2 %>% select(S, nind)
+) %>%
+  filter(between(nind, 950, 1050), between(S, 45, 55)) %>%
+  select(-c(S, nind)) %>%
+  apply(2, mean) %>% round(2)
+```
+
+Let's take a look at what a regional pool with these parameters would look like:
+
+```{r fig.height=5, fig.width=7, units="in"}
+init_meta(M = 160, env_sd_mc = 5, cauchy = 3.5, trait_sds = 1) %>%
+  plot()
+```
+
+The species-abundance distribution looks realistic: there are few common species and many rare species.
+
+# Focal run
+
+Now, we can run the simulations with less variation in the parameter space. 
+
+```{r eval=F}
+# define parameter boundaries
+param_ranges <- tibble(
+  # M = c(2, 500),
+  # env_sd_mc = c(0.1, 10),
+  # cauchy = c(0.1, 25),
+  # trait_sds = c(0, 1),
+  # npatch = c(10, 100),
+  env_mean_lh = c(0, 10),
+  env_sd_lh = c(0.1, 10),
+  # recruitment = c(0, 10),
+  dispersal = c(0, 10),
+  reproduction = c(0.5, 10),
+  # expenditure = c(0.01, 1),
+  # res_input = c(0.05, 25),
+  intake = c(1, 5),
+  clustering = c(0, 1),
+  dispersion = c(0, 1)
+)
+
+# create the hypercube
+mat <- sobol_matrices(N = 2^11, params = colnames(param_ranges))
+
+# rescale the hypercube
+minmaxscale <- function(x, minx = min(x), maxx = max(x), minout, maxout){
+  minout + ((x - minx)*(maxout - minout))/(maxx - minx)
+}
+params3 <- sapply(1:ncol(param_ranges), function(variable){
+  minmaxscale(x = mat[, variable], 
+              minx = min(mat[, variable]), 
+              maxx = max(mat[, variable]), 
+              minout = param_ranges[1, variable] %>% unlist() %>% unname(),
+              maxout = param_ranges[2, variable] %>% unlist() %>% unname())
+})
+colnames(params3) <- colnames(param_ranges)
+
+# run the simulations
+num_cores <- detectCores()
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+out3 <- foreach(i = 1:nrow(params3), 
+               .combine = 'bind_rows',
+               .packages = c("tidyverse", "progress", "lubridate", "FilterABM")) %dopar%{
+                 x <- lapply(
+                   1:5, 
+                   function(j){
+                     y <- tryCatch(
+                       FilterABM::crun_sim_(
+                         nsteps = 1000, progress_bar = F, 
+                         M = 160, 
+                         env_mean_mc = 0, 
+                         env_sd_mc = 5, 
+                         cauchy = 3.6, 
+                         trait_sds = 0.5, 
+                         max_abun = 1e6, 
+                         npatch = 60, 
+                         res = 1000, 
+                         gradient = "correlated", K = 3, rho = 0.9,
+                         env_mean_lh = params2$env_mean_lh[i], 
+                         env_sd_lh = params2$env_sd_lh[i], 
+                         nind0 = 1e4, 
+                         recruitment = 5, 
+                         dispersal = params2$dispersal[i], 
+                         reproduction = params2$reproduction[i], 
+                         expenditure = 0.7, 
+                         res_input = 10, 
+                         intake = params2$intake[i], 
+                         clustering = params2$clustering[i], 
+                         dispersion = params2$dispersion[i]
+                       ), 
+                       error = function(e){
+                         tibble(runtime = NaN, extinct = NA, S = NA, nind = NA,
+                                sad_ks = NA, 
+                                t_mean = NA, t_mean0 = NA, t_var = NA, t_var0 = NA,
+                                tad_ks = NA)
+                       }
+                     )
+                     y[c("S", "nind")] %>%
+                       unlist()
+                   }
+                 )
+                 x %>% 
+                   bind_rows() %>%
+                   apply(2, function(z) mean(z, na.rm = T)) %>%
+                   bind_rows()
+               }
+
+stopCluster(cl)
+
+out3 %>% write_csv("filtsens3.csv")
+```

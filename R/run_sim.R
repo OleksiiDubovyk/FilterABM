@@ -96,6 +96,89 @@ tad_ks_boot <- function(tad, mc, nperm = 100){
   return(ks_boot)
 }
 
+#' Helper, Jaccard index
+#'
+#' @param spp1 Species identities in community 1
+#' @param spp2 Species identities in community 2
+#'
+#' @returns Jaccard index
+#' @export
+#'
+jaccard <- function(spp1, spp2){
+  spp <- unique(c(spp1, spp2))
+  # length(spp[(spp %in% spp1) & (spp %in% spp2)]) / length(spp)
+  sum((spp %in% spp1) * (spp %in% spp2)) / length(spp)
+}
+
+#' Helper, permutational expectation of Jaccard index for observed community and random draws from regional pool
+#'
+#' @param obs Observed community
+#' @param mc A regional pool object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
+#' @param nperm Numeric, number of permutations.
+#'
+#' @returns Jaccard indices
+#' @export
+jaccard_boot <- function(obs, mc, nperm = 100){
+  j_boot <- numeric(nperm)
+  n <- nrow(obs)
+  for (i in 1:nperm){
+    s1 <- unique(obs$species)
+    s2 <- draw_lcom(mc = mc, lh = FilterABM::init_envt(), nind = n) %>%
+      .$species %>% unique()
+    j_boot[i] <- jaccard(s1, s2)
+  }
+  return(j_boot)
+}
+
+#' Helper, Bray-Curtis similarity
+#'
+#' @param com1 Tibble for community 1 with two columns: species and n
+#' @param com2 Tibble for community 2 with two columns: species and n
+#'
+#' @returns Bray-Curtis index
+#' @export
+braycurtis <- function(com1, com2){
+  com <- left_join(com1, com2, by = "species") %>%
+    mutate(n.x = ifelse(is.na(n.x), 0, n.x),
+           n.y = ifelse(is.na(n.y), 0, n.y))
+  tmp <- com %>%
+    mutate(minn = 2*map2_dbl(n.x, n.y, min),
+           sumn = n.x + n.y) %>%
+    select(minn, sumn) %>%
+    apply(2, sum)
+  tmp[1]/tmp[2]
+}
+
+#' Helper, permutational expectation of Bray-Curtis index for observed community and random draws from regional pool
+#'
+#' @param obs Observed community
+#' @param mc A regional pool object of class "FilterABM_mc"/"tbl_df"/"tbl"/"data.frame" (see \code{?FilterABM::FilterABM_mc}).
+#' @param nperm Numeric, number of permutations.
+#'
+#' @returns Bray-Curtis indices
+#' @export
+braycurtis_boot <- function(obs, mc, nperm = 100){
+  bc_boot <- numeric(nperm)
+  n <- nrow(obs)
+  for (i in 1:nperm){
+    s1 <- obs %>% group_by(species) %>% summarise(n = n())
+    s2 <- draw_lcom(mc = mc, lh = FilterABM::init_envt(), nind = n) %>%
+      group_by(species) %>% summarise(n = n())
+    bc_boot[i] <- braycurtis(s1, s2)
+  }
+  return(bc_boot)
+}
+
+#' Helper, 95-percentile range of a values
+#'
+#' @param x A numeric vector.
+#'
+#' @returns Range between the 2.5th and 9.75th percentile
+#' @export
+fd95 <- function(x){
+  unname(quantile(x, 0.975) - quantile(x, 0.025))
+}
+
 #' Run a simulation of environmental filtering on specified metacommunity, local habitat, and local community objects
 #'
 #' @description
@@ -140,12 +223,17 @@ tad_ks_boot <- function(tad, mc, nperm = 100){
 #' [["nind"]] - number of individuals;
 #' [["sad"]] - species abundance distribution (SAD);
 #' [["sad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed SAD and a community of the same size randomly drawn from the regional pool;
+#' [["sad_j]] - median (100 permutations) Jaccard index for the observed SAD and a community of the same size randomly drawn from the regional pool;
+#' [["sad_bc]] - - median (100 permutations) Bray-Curtis index for the observed SAD and a community of the same size randomly drawn from the regional pool;
 #' [["tad"]] - trait abundance distribution (TAD) as an output of kernel density estimation (stats::density());
 #' [["t_mean"]] - mean trait value;
 #' [["t_mean0"]] - mean trait value in a community of the same size randomly drawn from the regional pool;
 #' [["t_var"]] - trat variance;
 #' [["t_var0"]] - trat variance in a community of the same size randomly drawn from the regional pool;
-#' [["tad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed TAD and a community of the same size randomly drawn from the regional pool.
+#' [["tad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed TAD and a community of the same size randomly drawn from the regional pool;
+#' [["FD"]] - range between the 0.025th and 0.975th percentile of observed trait values;
+#' [["FD0"]] - range between the 0.025th and 0.975th percentile of trait values of random subsample from the metacommunity;
+#' [["FDall"]] - range between the 0.025th and 0.975th percentile of observed trait values within the regional pool;
 #'
 #' @import progress
 #' @importFrom stats approx
@@ -238,12 +326,18 @@ run_sim_ <- function(mc, lh, lc,
     "nind" = NA,
     "sad" = NA,
     "sad_ks" = NA,
+    "sad_j" = NA,
+    "sad_bc" = NA,
     "tad" = NA,
     "t_mean" = NA,
     "t_mean0" = NA,
     "t_var" = NA,
     "t_var0" = NA,
-    "tad_ks" = NA
+    "tad_ks" = NA,
+    "tad_overlap" = NA,
+    "FD" = NA,
+    "FD0" = NA,
+    "FDall" = NA
   )
 
   if (!out$extinct){
@@ -261,6 +355,10 @@ run_sim_ <- function(mc, lh, lc,
 
       out$sad_ks <- median(sad_ks_boot(out$sad, out$mc))
 
+      out$sad_j <- FilterABM::jaccard_boot(obs = lc, mc = mc) %>% median()
+
+      out$sad_bc <- FilterABM::braycurtis_boot(obs = lc, mc = mc) %>% median()
+
       out$tad <- density(
         lc$trait,
         # KDE for plus/minus 3 sigmas from the most extreme trait values
@@ -271,11 +369,17 @@ run_sim_ <- function(mc, lh, lc,
       out$t_mean <- mean(lc$trait)
       out$t_var <- var(lc$trait)
 
-      lc_tmp <- draw_lcom(mc = mc, lh = lh, nind = nrow(lc))
+      lc_tmp <- FilterABM::draw_lcom(mc = mc, lh = lh, nind = nrow(lc))
       out$t_mean0 <- mean(lc_tmp$trait)
       out$t_var0 <- var(lc_tmp$trait)
 
       out$tad_ks <- median(tad_ks_boot(out$tad, out$mc))
+
+      out$FD <- FilterABM::fd95(lc$trait)
+
+      out$FD0 <- FilterABM::fd95(lc_tmp$trait)
+
+      out$FDall <- FilterABM::fd95(mc$trait)
 
     }else{
 
@@ -286,6 +390,10 @@ run_sim_ <- function(mc, lh, lc,
       out$sad <- 1
 
       out$sad_ks <- NA
+
+      out$sad_j = NA
+
+      out$sad_bc = NA
 
       out$tad <- lc$trait[1]
 

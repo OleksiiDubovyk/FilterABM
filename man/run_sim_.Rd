@@ -60,12 +60,17 @@ A diagnostic named list with the following elements:
 [["nind"]] - number of individuals;
 [["sad"]] - species abundance distribution (SAD);
 [["sad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed SAD and a community of the same size randomly drawn from the regional pool;
+[["sad_j]] - median (100 permutations) Jaccard index for the observed SAD and a community of the same size randomly drawn from the regional pool;
+[["sad_bc]] - - median (100 permutations) Bray-Curtis index for the observed SAD and a community of the same size randomly drawn from the regional pool;
 [["tad"]] - trait abundance distribution (TAD) as an output of kernel density estimation (stats::density());
 [["t_mean"]] - mean trait value;
 [["t_mean0"]] - mean trait value in a community of the same size randomly drawn from the regional pool;
 [["t_var"]] - trat variance;
 [["t_var0"]] - trat variance in a community of the same size randomly drawn from the regional pool;
-[["tad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed TAD and a community of the same size randomly drawn from the regional pool.
+[["tad_ks"]] - median (100 permutations) Kolomogorov-Smirnov statistic for the observed TAD and a community of the same size randomly drawn from the regional pool;
+[["FD"]] - range between the 0.025th and 0.975th percentile of observed trait values;
+[["FD0"]] - range between the 0.025th and 0.975th percentile of trait values of random subsample from the metacommunity;
+[["FDall"]] - range between the 0.025th and 0.975th percentile of observed trait values within the regional pool;
 }
 \description{
 Requires an input of pre-defined metacommunity, local habitat, and local community objects, the two latter of which are iteratively modified to reflect changes caused by environmental filtering.
