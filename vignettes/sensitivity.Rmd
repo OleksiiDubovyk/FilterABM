@@ -610,7 +610,10 @@ out3 <- foreach(i = 1:nrow(params3),
                                 tad_ks = NA)
                        }
                      )
-                     y[c("S", "nind")] %>%
+                     y[c("S", "nind",
+                         "sad_ks", "sad_j", "sad_bc",
+                         "t_mean", "t_mean0", "t_var", "t_var0",
+                         "tad_ks", "FD", "FD0", "FDall")] %>%
                        unlist()
                    }
                  )

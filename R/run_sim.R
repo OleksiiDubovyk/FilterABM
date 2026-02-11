@@ -369,15 +369,15 @@ run_sim_ <- function(mc, lh, lc,
       out$t_mean <- mean(lc$trait)
       out$t_var <- var(lc$trait)
 
-      lc_tmp <- FilterABM::draw_lcom(mc = mc, lh = lh, nind = nrow(lc))
-      out$t_mean0 <- mean(lc_tmp$trait)
-      out$t_var0 <- var(lc_tmp$trait)
+      lc_tmp <- lapply(1:100, function(j) FilterABM::draw_lcom(mc = mc, lh = lh, nind = nrow(lc)))
+      out$t_mean0 <- lapply(lc_tmp, function(l) mean(l$trait)) %>% unlist() %>% mean()
+      out$t_var0 <- lapply(lc_tmp, function(l) var(l$trait)) %>% unlist() %>% mean()
 
       out$tad_ks <- median(tad_ks_boot(out$tad, out$mc))
 
       out$FD <- FilterABM::fd95(lc$trait)
 
-      out$FD0 <- FilterABM::fd95(lc_tmp$trait)
+      out$FD0 <- lapply(lc_tmp, function(l) FilterABM::fd95(l$trait)) %>% unlist() %>% mean()
 
       out$FDall <- FilterABM::fd95(mc$trait)
 
